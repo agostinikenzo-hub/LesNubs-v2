@@ -20,6 +20,7 @@ async function loadData() {
       splits["Season 25"].push(row);
     });
 
+    renderSummary(splits["Season 25"]);
     renderOverview(splits["Season 25"]);
     renderSplits(splits);
   } catch (err) {
@@ -42,7 +43,6 @@ function calcStats(data) {
     const mvp = (row["MVP"] || "").trim().toLowerCase();
     const ace = (row["ACE"] || "").trim().toLowerCase();
 
-    // Skip empty rows (no stats)
     const played = kills + deaths + assists > 0;
     if (!played) return;
 
@@ -72,6 +72,35 @@ function calcStats(data) {
   });
 
   return players;
+}
+
+// 🆕 Global team summary (top card)
+function renderSummary(data) {
+  const stats = calcStats(data);
+  const all = Object.values(stats);
+
+  const totalKills = all.reduce((s, p) => s + p.kills, 0);
+  const totalDeaths = all.reduce((s, p) => s + p.deaths, 0);
+  const totalAssists = all.reduce((s, p) => s + p.assists, 0);
+  const totalGames = all.reduce((s, p) => s + p.games, 0) / 6; // 6 players per game
+  const totalWins = all.reduce((s, p) => s + p.wins, 0) / 6;
+  const winrate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) : "—";
+  const avgTeamKDA =
+    totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "∞";
+
+  const container = document.getElementById("season-summary");
+  container.innerHTML = `
+    <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
+      <h2 class="text-2xl font-bold text-orange-600 mb-2">📅 Season 25 Summary</h2>
+      <div class="flex flex-wrap justify-center gap-6 text-gray-700">
+        <div><span class="font-semibold">${totalGames}</span> games played</div>
+        <div><span class="font-semibold">${winrate}%</span> winrate</div>
+        <div><span class="font-semibold">${totalKills}</span> kills</div>
+        <div><span class="font-semibold">${totalDeaths}</span> deaths</div>
+        <div><span class="font-semibold">${totalAssists}</span> assists</div>
+        <div><span class="font-semibold">${avgTeamKDA}</span> avg team KDA</div>
+      </div>
+    </div>`;
 }
 
 function renderOverview(data) {
