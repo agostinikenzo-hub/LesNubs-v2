@@ -4,7 +4,7 @@ const SHEET_URL =
 
 let trendWindow = 10; // Default trend window
 
-// --- Character Select Data ---
+// --- CHARACTER SELECT DATA ---
 const players = [
   { name: "Betzhamo", svg: "assets/avatars/betzhamo.svg", color: "#f97316" },
   { name: "Jansen", svg: "assets/avatars/jansen.svg", color: "#3b82f6" },
@@ -14,6 +14,7 @@ const players = [
   { name: "HH", svg: "assets/avatars/hh.svg", color: "#ef4444" },
 ];
 
+// --- RENDER CHARACTER SELECT ---
 function renderCharacterSelect() {
   const container = document.getElementById("avatars");
   if (!container) return;
@@ -44,19 +45,17 @@ let selectedPlayer = null;
 
 function selectCharacter(name, color) {
   selectedPlayer = name;
-
-  // Reset all characters
   document.querySelectorAll(".character").forEach((el) => {
-    el.classList.remove("selected");
     const ring = el.querySelector(".select-ring");
-    if (ring) ring.style.boxShadow = "0 0 0 4px transparent";
-    ring.style.opacity = "0";
+    el.classList.remove("selected");
+    if (ring) {
+      ring.style.boxShadow = "0 0 0 4px transparent";
+      ring.style.opacity = "0";
+    }
   });
 
-  // Apply highlight and pulse animation
   const el = document.querySelector(`.character[data-player="${name}"]`);
   if (el) {
-    el.classList.add("selected");
     const ring = el.querySelector(".select-ring");
     ring.style.boxShadow = `0 0 20px 6px ${color}99`;
     ring.style.opacity = "1";
@@ -65,51 +64,24 @@ function selectCharacter(name, color) {
   highlightPlayerStats(name);
 }
 
-// --- LOAD DATA ---
-async function loadData() {
-  const status = document.getElementById("status");
-  try {
-    const res = await fetch(SHEET_URL);
-    const csv = await res.text();
-    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
-    const rows = parsed.data;
-
-    status.textContent = `Loaded ${rows.length} records ✔`;
-
-    const splits = { "Split 1": [], "Split 2": [], "Split 3": [], "Season 25": [] };
-    rows.forEach((row) => {
-      const split = (row["Split"] || "").trim();
-      if (splits[split]) splits[split].push(row);
-      splits["Season 25"].push(row);
-    });
-
-    renderSummary(splits["Season 25"]);
-    renderOverview(splits["Season 25"]);
-    renderTrends(splits["Season 25"]);
-    renderSplits(splits);
-  } catch (err) {
-    console.error(err);
-    status.textContent = "⚠️ Error loading data. Check Google Sheet access.";
-  }
-  renderCharacterSelect();
-}
+// --- LOAD DATA + LOADING SCREEN ---
 async function loadData() {
   const status = document.getElementById("status");
   const loader = document.getElementById("loading-screen");
+
   try {
     const res = await fetch(SHEET_URL);
     const csv = await res.text();
     const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
     const rows = parsed.data;
 
-    // Once loaded, fade out the loading screen
-    setTimeout(() => {
-      loader.classList.add("fade-out");
-    }, 1500); // ensure animation runs for a second before fade out
-
     status.textContent = `Loaded ${rows.length} records ✔`;
 
-    // existing logic...
+    // ✅ Animate loader before fade out
+    setTimeout(() => {
+      loader.classList.add("fade-out");
+    }, 1500);
+
     const splits = { "Split 1": [], "Split 2": [], "Split 3": [], "Season 25": [] };
     rows.forEach((row) => {
       const split = (row["Split"] || "").trim();
@@ -117,10 +89,14 @@ async function loadData() {
       splits["Season 25"].push(row);
     });
 
-    renderSummary(splits["Season 25"]);
-    renderOverview(splits["Season 25"]);
-    renderKDATrends(splits["Season 25"]);
-    renderSplits(splits);
+    // Render content after fade delay
+    setTimeout(() => {
+      renderSummary(splits["Season 25"]);
+      renderOverview(splits["Season 25"]);
+      renderTrends(splits["Season 25"]);
+      renderSplits(splits);
+      renderCharacterSelect();
+    }, 1600);
   } catch (err) {
     console.error(err);
     status.textContent = "⚠️ Error loading data. Check Google Sheet access.";
@@ -152,20 +128,10 @@ function calcStats(data) {
 
     if (!players[name])
       players[name] = {
-        kills: 0,
-        deaths: 0,
-        assists: 0,
-        wins: 0,
-        games: 0,
-        mvps: 0,
-        aces: 0,
-        kpSum: 0,
-        kpCount: 0,
-        opggSum: 0,
-        opggCount: 0,
-        gameHistory: [],
-        kpHistory: [],
-        opggHistory: [],
+        kills: 0, deaths: 0, assists: 0,
+        wins: 0, games: 0, mvps: 0, aces: 0,
+        kpSum: 0, kpCount: 0, opggSum: 0, opggCount: 0,
+        gameHistory: [], kpHistory: [], opggHistory: []
       };
 
     players[name].kills += kills;
@@ -181,13 +147,11 @@ function calcStats(data) {
       players[name].kpCount += 1;
       players[name].kpHistory.push(kp);
     }
-
     if (opgg) {
       players[name].opggSum += opgg;
       players[name].opggCount += 1;
       players[name].opggHistory.push(opgg);
     }
-
     players[name].gameHistory.push(kda);
   });
 
@@ -267,7 +231,7 @@ function renderOverview(data) {
     </div>`;
 }
 
-// --- TREND SECTION (KDA + OP.GG + KP) ---
+// --- TRENDS (KDA + OP.GG + KP) ---
 function renderTrends(data) {
   const stats = calcStats(data);
   const container = document.getElementById("kda-trends");
@@ -348,7 +312,7 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLITS (with fixed winrate + layout) ---
+// --- SPLITS (with winrate fix + layout) ---
 function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
   const allData = splitsRaw["Season 25"] || [];
@@ -505,4 +469,6 @@ function renderSplits(splitsRaw) {
     .join("");
 }
 
+// --- START ---
 loadData();
+
