@@ -380,9 +380,7 @@ function renderSplits(splitsRaw) {
 
   container.innerHTML = Object.entries(splitGroups)
     .map(([split, data], idx) => {
-      if (!data.length)
-        return `<div
-      if (!data.length)
+            if (!data.length)
         return `<div class="bg-white p-6 rounded-2xl shadow-md text-gray-400 text-center italic">${split} — No data yet</div>`;
 
       const stats = calcStats(data);
@@ -504,3 +502,4 @@ function renderSplits(splitsRaw) {
 }
 
 loadData();
+
