@@ -9,8 +9,8 @@ const players = [
   { name: "Betzhamo", svg: "assets/avatars/betzhamo.svg", color: "#f97316" },
   { name: "Jansen", svg: "assets/avatars/jansen.svg", color: "#3b82f6" },
   { name: "Sweeney", svg: "assets/avatars/sweeney.svg", color: "#22c55e" },
-  { name: "Ota", svg: "assets/avatars/ota.svg", color: "#a855f7" },
-  { name: "Achten", svg: "assets/avatars/achten.svg", color: "#f59e0b" },
+  { name: "denotes", svg: "assets/avatars/ota.svg", color: "#a855f7" },
+  { name: "Burningelf", svg: "assets/avatars/achten.svg", color: "#f59e0b" },
   { name: "HH", svg: "assets/avatars/hh.svg", color: "#ef4444" },
 ];
 
