@@ -36,6 +36,7 @@ async function loadData() {
   }
 }
 
+// 🧮 Calculate stats per player
 function calcStats(data) {
   const players = {};
 
@@ -81,18 +82,35 @@ function calcStats(data) {
   return players;
 }
 
-// 🆕 Global team summary (top card)
+// 🆕 Season summary card (fixed total games + winrate)
 function renderSummary(data) {
   const stats = calcStats(data);
   const all = Object.values(stats);
 
+  // Totals
   const totalKills = all.reduce((s, p) => s + p.kills, 0);
   const totalDeaths = all.reduce((s, p) => s + p.deaths, 0);
   const totalAssists = all.reduce((s, p) => s + p.assists, 0);
-  const totalGames = all.reduce((s, p) => s + p.games, 0) / 6; // 6 players per game
-  const totalWins = all.reduce((s, p) => s + p.wins, 0) / 6;
+
+  // ✅ Count unique game numbers
+  const uniqueGames = new Set(
+    data
+      .map((r) => (r["Game #"] || "").trim())
+      .filter((g) => g !== "" && !isNaN(g))
+  );
+  const totalGames = uniqueGames.size;
+
+  // ✅ Count unique wins (yes = win)
+  const winGames = new Set(
+    data
+      .filter((r) => (r["Result"] || "").toLowerCase() === "yes")
+      .map((r) => (r["Game #"] || "").trim())
+      .filter((g) => g !== "" && !isNaN(g))
+  );
+
   const winrate =
-    totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) : "—";
+    totalGames > 0 ? ((winGames.size / totalGames) * 100).toFixed(1) : "—";
+
   const avgTeamKDA =
     totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "∞";
 
@@ -111,6 +129,7 @@ function renderSummary(data) {
     </div>`;
 }
 
+// 🏆 Overview (Top 3 Players)
 function renderOverview(data) {
   const stats = calcStats(data);
   const sorted = Object.entries(stats)
@@ -151,6 +170,7 @@ function renderOverview(data) {
     </div>`;
 }
 
+// 📊 Split details
 function renderSplits(splits) {
   const container = document.getElementById("splits");
   const keys = ["Split 1", "Split 2", "Split 3"];
@@ -218,4 +238,3 @@ function renderSplits(splits) {
 }
 
 loadData();
-
