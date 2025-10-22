@@ -305,7 +305,4 @@ function renderSplits(splitsRaw) {
     })
     .join("");
 }
-
-}
-
 loadData();
