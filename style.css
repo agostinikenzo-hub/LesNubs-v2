@@ -20,6 +20,40 @@ body {
     transform: scale(1.05);
     filter: brightness(1.1);
   }
+
+.avatar-fall {
+  transform: translateY(-100px);
+  opacity: 0;
+  animation: fallIn 0.8s ease forwards;
+}
+
+@keyframes fallIn {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* slight stagger delay for each avatar */
+.avatar-fall:nth-child(1) { animation-delay: 0.1s; }
+.avatar-fall:nth-child(2) { animation-delay: 0.2s; }
+.avatar-fall:nth-child(3) { animation-delay: 0.3s; }
+.avatar-fall:nth-child(4) { animation-delay: 0.4s; }
+.avatar-fall:nth-child(5) { animation-delay: 0.5s; }
+.avatar-fall:nth-child(6) { animation-delay: 0.6s; }
+
+#loading-screen.fade-out {
+  animation: fadeOut 0.7s ease forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+
 </style>
 
 
