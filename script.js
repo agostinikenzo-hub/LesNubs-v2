@@ -314,15 +314,15 @@ function renderSplits(splitsRaw) {
 
           <!-- Mini Summary Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="bg-orange-100 rounded-lg p-3 text-center text-orange-700 font-medium">
+            <div class="bg-orange-100 rounded-lg p-3 text-center text-grey-600 font-medium">
               🎮 <div class="text-lg font-bold">${totalGames}</div>
               <div class="text-sm">Games Played</div>
             </div>
-            <div class="bg-green-100 rounded-lg p-3 text-center text-green-700 font-medium">
+            <div class="bg-green-100 rounded-lg p-3 text-center text-grey-500 font-medium">
               ⚔️ <div class="text-lg font-bold">${totalKills} / ${totalDeaths} / ${totalAssists}</div>
               <div class="text-sm">Total K / D / A</div>
             </div>
-            <div class="bg-indigo-100 rounded-lg p-3 text-center text-indigo-700 font-medium">
+            <div class="bg-indigo-100 rounded-lg p-3 text-center text-grey-400 font-medium">
               📊 <div class="text-lg font-bold">${avgTeamKDA}</div>
               <div class="text-sm">${winrate}% Winrate</div>
             </div>
