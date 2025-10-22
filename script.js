@@ -39,33 +39,49 @@ function renderCharacterSelect() {
 }
 
 let selectedPlayer = null;
+let selectedColor = null;
 
 function selectCharacter(name, color) {
   selectedPlayer = name;
+  selectedColor = color;
+
+  // Reset all avatars
   document.querySelectorAll(".character").forEach((el) => {
     const ring = el.querySelector("div");
-    if (el.dataset.player === name) {
-      ring.style.boxShadow = `0 0 10px 3px ${color}`;
-      el.querySelector("p").classList.add("text-orange-500");
-    } else {
-      ring.style.boxShadow = "none";
-      el.querySelector("p").classList.remove("text-orange-500");
-    }
+    ring.style.boxShadow = "none";
+    el.querySelector("p").classList.remove("text-orange-500");
   });
 
-  // Highlight across dashboard
-  highlightPlayerStats(name);
+  // Highlight selected avatar
+  const el = document.querySelector(`.character[data-player="${name}"]`);
+  if (el) {
+    const ring = el.querySelector("div");
+    ring.style.boxShadow = `0 0 10px 3px ${color}`;
+    el.querySelector("p").classList.add("text-orange-500");
+  }
+
+  // Apply consistent highlight across the dashboard
+  highlightPlayerStats(name, color);
 }
 
-// --- HIGHLIGHT SELECTED PLAYER ---
-function highlightPlayerStats(name) {
+function highlightPlayerStats(name, color) {
+  // Reset all highlights first
   document.querySelectorAll("[data-player-stat]").forEach((el) => {
-    const matches = el.dataset.playerStat === name;
-    el.classList.toggle("bg-orange-50", matches);
-    el.classList.toggle("ring-2", matches);
-    el.classList.toggle("ring-orange-400", matches);
+    el.style.backgroundColor = "";
+    el.style.boxShadow = "";
+    el.style.color = "";
+    el.classList.remove("ring-2", "ring-offset-1");
+  });
+
+  // Apply highlight to all matching player elements
+  document.querySelectorAll(`[data-player-stat="${name}"]`).forEach((el) => {
+    el.style.backgroundColor = `${color}10`; // light background tint
+    el.style.boxShadow = `0 0 10px ${color}55`;
+    el.classList.add("ring-2", "ring-offset-1");
+    el.style.setProperty("--tw-ring-color", color); // ensures Tailwind ring color
   });
 }
+
 
 // --- LOAD DATA ---
 async function loadData() {
