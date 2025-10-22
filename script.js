@@ -35,11 +35,18 @@ function calcStats(data) {
     const name = row["Player"]?.trim();
     if (!name) return;
 
-    const kills = parseFloat((row["Kills"] || "0").replace(",", ".")) || 0;
-    const deaths = parseFloat((row["Deaths"] || "0").replace(",", ".")) || 0;
-    const assists = parseFloat((row["Assists"] || "0").replace(",", ".")) || 0;
-    const result = (row["Result"] || "").trim().toUpperCase();
-    const win = result === "W" ? 1 : 0;
+    const kills = parseFloat((row["Kills"] || "").replace(",", ".")) || 0;
+    const deaths = parseFloat((row["Deaths"] || "").replace(",", ".")) || 0;
+    const assists = parseFloat((row["Assists"] || "").replace(",", ".")) || 0;
+    const result = (row["Result"] || "").trim().toLowerCase();
+    const mvp = (row["MVP"] || "").trim().toLowerCase();
+    const ace = (row["ACE"] || "").trim().toLowerCase();
+
+    // Skip empty rows (no stats)
+    const played = kills + deaths + assists > 0;
+    if (!played) return;
+
+    const win = result === "yes" ? 1 : 0;
     const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
 
     if (!players[name])
@@ -50,6 +57,8 @@ function calcStats(data) {
         games: 0,
         wins: 0,
         kdaSum: 0,
+        mvps: 0,
+        aces: 0,
       };
 
     players[name].kills += kills;
@@ -58,12 +67,13 @@ function calcStats(data) {
     players[name].wins += win;
     players[name].games += 1;
     players[name].kdaSum += kda;
+    if (mvp === "yes") players[name].mvps += 1;
+    if (ace === "yes") players[name].aces += 1;
   });
 
   return players;
 }
 
-// 🧠 Renders the main "Season 25 Overview" section
 function renderOverview(data) {
   const stats = calcStats(data);
   const sorted = Object.entries(stats)
@@ -74,7 +84,9 @@ function renderOverview(data) {
       assists: s.assists,
       avgKDA: (s.kdaSum / s.games).toFixed(2),
       games: s.games,
-      winrate: ((s.wins / s.games) * 100).toFixed(1),
+      winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
+      mvps: s.mvps,
+      aces: s.aces,
     }))
     .sort((a, b) => b.avgKDA - a.avgKDA);
 
@@ -89,14 +101,12 @@ function renderOverview(data) {
         ${top
           .map(
             (p, i) => `
-          <div class="rounded-xl p-4 shadow-md ${
-            i === 0 ? "bg-yellow-100" : i === 1 ? "bg-gray-200" : "bg-orange-200"
-          }">
+          <div class="rounded-xl p-4 shadow-md bg-neutral-50">
             <h3 class="text-xl font-semibold">${["🥇", "🥈", "🥉"][i]} ${p.name}</h3>
             <p class="text-gray-800 font-medium">${p.avgKDA} KDA</p>
             <p class="text-gray-700">Winrate: ${p.winrate}%</p>
             <p class="text-gray-600 text-sm">${p.kills} / ${p.deaths} / ${p.assists} total</p>
-            <p class="text-gray-500 text-xs">${p.games} games played</p>
+            <p class="text-gray-500 text-xs">${p.games} games | ${p.mvps} MVP | ${p.aces} ACE</p>
           </div>`
           )
           .join("")}
@@ -104,7 +114,6 @@ function renderOverview(data) {
     </div>`;
 }
 
-// 🧠 Renders individual split cards
 function renderSplits(splits) {
   const container = document.getElementById("splits");
   const keys = ["Split 1", "Split 2", "Split 3"];
@@ -120,7 +129,9 @@ function renderSplits(splits) {
           assists: s.assists,
           avgKDA: (s.kdaSum / s.games).toFixed(2),
           games: s.games,
-          winrate: ((s.wins / s.games) * 100).toFixed(1),
+          winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
+          mvps: s.mvps,
+          aces: s.aces,
         }))
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
@@ -138,6 +149,9 @@ function renderSplits(splits) {
                       <th class="pb-1 text-right">Kills</th>
                       <th class="pb-1 text-right">Deaths</th>
                       <th class="pb-1 text-right">Assists</th>
+                      <th class="pb-1 text-right">MVP</th>
+                      <th class="pb-1 text-right">ACE</th>
+                      <th class="pb-1 text-right">Games</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -151,6 +165,9 @@ function renderSplits(splits) {
                         <td class="py-1 text-right">${p.kills}</td>
                         <td class="py-1 text-right">${p.deaths}</td>
                         <td class="py-1 text-right">${p.assists}</td>
+                        <td class="py-1 text-right">${p.mvps}</td>
+                        <td class="py-1 text-right">${p.aces}</td>
+                        <td class="py-1 text-right">${p.games}</td>
                       </tr>`
                       )
                       .join("")}
