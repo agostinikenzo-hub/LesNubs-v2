@@ -2,3 +2,24 @@ body {
   font-family: "Inter", sans-serif;
 }
 
+<style>
+  @keyframes pulseSelect {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.9; }
+  }
+
+  .character.selected img {
+    animation: pulseSelect 1.2s ease-in-out infinite;
+    filter: drop-shadow(0 0 12px rgba(249,115,22,0.7));
+  }
+
+  .character img {
+    transition: all 0.25s ease;
+  }
+
+  .character:hover img {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 8px rgba(255,165,0,0.4));
+  }
+</style>
+
