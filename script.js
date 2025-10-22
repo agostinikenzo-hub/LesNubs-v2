@@ -344,7 +344,7 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLIT STATS ---
+// --- CLEANER SPLIT CARD LAYOUT ---
 function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
   const allData = splitsRaw["Season 25"] || [];
@@ -380,13 +380,16 @@ function renderSplits(splitsRaw) {
 
   container.innerHTML = Object.entries(splitGroups)
     .map(([split, data], idx) => {
-            if (!data.length)
+      if (!data.length)
         return `<div class="bg-white p-6 rounded-2xl shadow-md text-gray-400 text-center italic">${split} — No data yet</div>`;
 
       const stats = calcStats(data);
       const sorted = Object.entries(stats)
         .map(([name, s]) => {
-          const avgKDA = s.deaths > 0 ? ((s.kills + s.assists) / s.deaths).toFixed(2) : (s.kills + s.assists).toFixed(2);
+          const avgKDA =
+            s.deaths > 0
+              ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+              : (s.kills + s.assists).toFixed(2);
           const winrate = s.games ? ((s.wins / s.games) * 100).toFixed(1) : "—";
           const avgKP = s.kpCount ? (s.kpSum / s.kpCount).toFixed(1) : "—";
           return {
@@ -405,23 +408,30 @@ function renderSplits(splitsRaw) {
         })
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
-      // Split summary
+      // --- SPLIT SUMMARY ---
       const allGames = [...new Set(data.map((r) => r["Game #"]))];
       const totalGames = allGames.length;
       const winningGames = new Set();
       data.forEach((r) => {
-        if (String(r["Result"]).toLowerCase() === "yes") winningGames.add(r["Game #"]);
+        if (String(r["Result"]).toLowerCase() === "yes")
+          winningGames.add(r["Game #"]);
       });
       const wins = winningGames.size;
 
       const totalKills = data.reduce((s, r) => s + (+r["Kills"] || 0), 0);
       const totalDeaths = data.reduce((s, r) => s + (+r["Deaths"] || 0), 0);
       const totalAssists = data.reduce((s, r) => s + (+r["Assists"] || 0), 0);
-      const avgTeamKDA = totalDeaths ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "—";
-      const winrate = totalGames ? ((wins / totalGames) * 100).toFixed(1) : "—";
+      const avgTeamKDA = totalDeaths
+        ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
+        : "—";
+      const winrate =
+        totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
 
       const avgKP =
-        data.filter((r) => r["Kill Part %"]).reduce((a, r) => a + (parseFloat(r["Kill Part %"]) || 0), 0) /
+        data.filter((r) => r["Kill Part %"]).reduce(
+          (a, r) => a + (parseFloat(r["Kill Part %"]) || 0),
+          0
+        ) /
         (data.filter((r) => r["Kill Part %"]).length || 1);
 
       const totalEntries = data.length;
@@ -430,47 +440,49 @@ function renderSplits(splitsRaw) {
       const mvpRate = ((mvps / totalEntries) * 100).toFixed(1);
       const aceRate = ((aces / totalEntries) * 100).toFixed(1);
 
+      // Most improved player
+      const mostImproved = sorted[0]?.name || "—";
+
       return `
         <div class="bg-white rounded-3xl shadow-xl p-6 flex flex-col space-y-4 border border-slate-100 hover:shadow-2xl transition">
-          <h3 class="text-2xl font-bold text-orange-500">${split}</h3>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+
+          <!-- Header -->
+          <div class="flex flex-wrap justify-between items-center mb-2">
+            <h3 class="text-2xl font-bold text-orange-500">${split}</h3>
+            <p class="text-sm text-gray-500">Team Summary</p>
+          </div>
+
+          <!-- Summary Row -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
             <div class="bg-orange-50 p-3 rounded-lg">
               <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
-              <p class="text-xs text-gray-600 uppercase tracking-wide">Games</p>
+              <p class="text-xs text-gray-600 uppercase">Games</p>
             </div>
             <div class="bg-green-50 p-3 rounded-lg">
               <p class="text-green-600 font-semibold text-lg">${winrate}%</p>
-              <p class="text-xs text-gray-600 uppercase tracking-wide">Winrate</p>
+              <p class="text-xs text-gray-600 uppercase">Winrate</p>
             </div>
             <div class="bg-indigo-50 p-3 rounded-lg">
               <p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p>
-              <p class="text-xs text-gray-600 uppercase tracking-wide">Team KDA</p>
+              <p class="text-xs text-gray-600 uppercase">Team KDA</p>
             </div>
             <div class="bg-sky-50 p-3 rounded-lg">
               <p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p>
-              <p class="text-xs text-gray-600 uppercase tracking-wide">Avg KP</p>
+              <p class="text-xs text-gray-600 uppercase">Avg KP</p>
             </div>
           </div>
-          <div class="flex justify-center gap-4 text-sm text-gray-600">
-            <span>🏅 MVP Rate: <span class="text-orange-600 font-semibold">${mvpRate}%</span></span>
-            <span>⚡ ACE Rate: <span class="text-indigo-600 font-semibold">${aceRate}%</span></span>
-          </div>
-          <div class="overflow-x-auto">
-            <table class="min-w-full text-sm mt-2 border-t border-gray-100">
+
+          <!-- Player Rankings -->
+          <div class="mt-2">
+            <table class="min-w-full text-sm border-t border-gray-100">
               <thead class="text-gray-700 font-semibold border-b">
                 <tr>
-                  <th class="text-left py-1">#</th>
+                  <th class="text-left py-1 w-8">#</th>
                   <th class="text-left py-1">Player</th>
                   <th class="text-right py-1">KDA</th>
                   <th class="text-right py-1">Trend</th>
                   <th class="text-right py-1">W%</th>
                   <th class="text-right py-1">Games</th>
-                  <th class="text-right py-1">K</th>
-                  <th class="text-right py-1">D</th>
-                  <th class="text-right py-1">A</th>
-                  <th class="text-right py-1">KP%</th>
-                  <th class="text-right py-1">MVP</th>
-                  <th class="text-right py-1">ACE</th>
                 </tr>
               </thead>
               <tbody>
@@ -484,18 +496,21 @@ function renderSplits(splitsRaw) {
                       <td class="py-1 text-right">${p.trend}</td>
                       <td class="py-1 text-right">${p.winrate}%</td>
                       <td class="py-1 text-right">${p.games}</td>
-                      <td class="py-1 text-right">${p.kills}</td>
-                      <td class="py-1 text-right">${p.deaths}</td>
-                      <td class="py-1 text-right">${p.assists}</td>
-                      <td class="py-1 text-right">${p.kp}</td>
-                      <td class="py-1 text-right">${p.mvps}</td>
-                      <td class="py-1 text-right">${p.aces}</td>
                     </tr>`
                   )
                   .join("")}
               </tbody>
             </table>
           </div>
+
+          <!-- Bottom Info Row -->
+          <div class="border-t border-gray-200 pt-2 text-sm text-gray-600 flex flex-wrap justify-between mt-2">
+            <p>🏅 MVP Rate: <span class="text-orange-600 font-semibold">${mvpRate}%</span></p>
+            <p>⚡ ACE Rate: <span class="text-indigo-600 font-semibold">${aceRate}%</span></p>
+            <p>💥 Total K/D/A: <span class="font-semibold">${totalKills}/${totalDeaths}/${totalAssists}</span></p>
+            <p>📈 Most improved: <span class="font-semibold text-green-600">${mostImproved}</span></p>
+          </div>
+
         </div>`;
     })
     .join("");
