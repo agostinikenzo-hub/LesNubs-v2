@@ -13,7 +13,13 @@ async function loadData() {
     status.textContent = `Loaded ${rows.length} records ✔`;
 
     // Group data by split
-    const splits = { "Split 1": [], "Split 2": [], "Split 3": [], "Season 25": [] };
+    const splits = {
+      "Split 1": [],
+      "Split 2": [],
+      "Split 3": [],
+      "Season 25": [],
+    };
+
     rows.forEach((row) => {
       const split = (row["Split"] || "").trim();
       if (splits[split]) splits[split].push(row);
@@ -25,7 +31,8 @@ async function loadData() {
     renderSplits(splits);
   } catch (err) {
     console.error(err);
-    status.textContent = "⚠️ Error loading data. Check sheet permissions or structure.";
+    status.textContent =
+      "⚠️ Error loading data. Check sheet permissions or structure.";
   }
 }
 
@@ -84,7 +91,8 @@ function renderSummary(data) {
   const totalAssists = all.reduce((s, p) => s + p.assists, 0);
   const totalGames = all.reduce((s, p) => s + p.games, 0) / 6; // 6 players per game
   const totalWins = all.reduce((s, p) => s + p.wins, 0) / 6;
-  const winrate = totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) : "—";
+  const winrate =
+    totalGames > 0 ? ((totalWins / totalGames) * 100).toFixed(1) : "—";
   const avgTeamKDA =
     totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "∞";
 
@@ -210,3 +218,4 @@ function renderSplits(splits) {
 }
 
 loadData();
+
