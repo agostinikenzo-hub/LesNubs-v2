@@ -212,14 +212,13 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLIT TABLES WITH AUTO DETECTION ---
+// --- SPLIT TABLES WITH UX IMPROVEMENTS ---
 function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
 
-  // ✅ Flatten all data
   const allData = splitsRaw["Season 25"] || [];
 
-  // ✅ Group rows by split number (handles "1", "Split 1", "split 1", etc.)
+  // ✅ Group by Split
   const splitGroups = { "Split 1": [], "Split 2": [], "Split 3": [] };
   allData.forEach((row) => {
     const val = String(row["Split"] || "").trim().toLowerCase();
@@ -228,17 +227,17 @@ function renderSplits(splitsRaw) {
     else if (val === "3" || val === "split 3") splitGroups["Split 3"].push(row);
   });
 
-  // ✅ Debug info (check browser console)
-  console.log("Split grouping result:", {
-    "Split 1": splitGroups["Split 1"].length,
-    "Split 2": splitGroups["Split 2"].length,
-    "Split 3": splitGroups["Split 3"].length,
-  });
-
-  // ✅ Render split cards
+  // ✅ Render each split
   container.innerHTML = Object.entries(splitGroups)
     .map(([split, data]) => {
+      if (data.length === 0)
+        return `
+          <div class="bg-white rounded-2xl shadow-md p-6 flex items-center justify-center text-gray-400 italic">
+            ${split} — No data yet
+          </div>`;
+
       const stats = calcStats(data);
+
       const sorted = Object.entries(stats)
         .map(([name, s]) => ({
           name,
@@ -257,50 +256,76 @@ function renderSplits(splitsRaw) {
         }))
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
+      // ✅ Team summary (aggregate across players)
+      const teamTotal = {
+        games: [...new Set(data.map((r) => r["Game #"]))].length,
+        kills: data.reduce((sum, r) => sum + (parseInt(r["Kills"]) || 0), 0),
+        deaths: data.reduce((sum, r) => sum + (parseInt(r["Deaths"]) || 0), 0),
+        assists: data.reduce((sum, r) => sum + (parseInt(r["Assists"]) || 0), 0),
+        wins: data.filter((r) => String(r["Result"]).toLowerCase() === "yes")
+          .length,
+      };
+      const avgKDA =
+        teamTotal.deaths > 0
+          ? ((teamTotal.kills + teamTotal.assists) / teamTotal.deaths).toFixed(2)
+          : "—";
+      const winrate =
+        teamTotal.games > 0
+          ? ((teamTotal.wins / teamTotal.games) * 100).toFixed(1)
+          : "—";
+
       return `
-        <div class="bg-white rounded-2xl shadow-md p-4">
-          <h3 class="text-xl font-bold text-orange-500 mb-2">${split}</h3>
-          ${
-            sorted.length
-              ? `<table class="min-w-full text-sm text-left">
-                <thead class="text-gray-700 border-b">
-                  <tr>
-                    <th class="pb-1">#</th>
-                    <th class="pb-1">Player</th>
-                    <th class="pb-1 text-right">KDA</th>
-                    <th class="pb-1 text-right">W%</th>
-                    <th class="pb-1 text-right">Games</th>
-                    <th class="pb-1 text-right">K</th>
-                    <th class="pb-1 text-right">D</th>
-                    <th class="pb-1 text-right">A</th>
-                    <th class="pb-1 text-right">KP</th>
-                    <th class="pb-1 text-right">MVP</th>
-                    <th class="pb-1 text-right">ACE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${sorted
-                    .map(
-                      (p, i) => `
-                    <tr class="border-b last:border-0">
-                      <td class="py-1">${i + 1}</td>
-                      <td class="py-1 font-medium">${p.name}</td>
-                      <td class="py-1 text-right">${p.avgKDA}</td>
-                      <td class="py-1 text-right">${p.winrate}%</td>
-                      <td class="py-1 text-right">${p.games}</td>
-                      <td class="py-1 text-right">${p.kills}</td>
-                      <td class="py-1 text-right">${p.deaths}</td>
-                      <td class="py-1 text-right">${p.assists}</td>
-                      <td class="py-1 text-right">${p.kp}</td>
-                      <td class="py-1 text-right">${p.mvps}</td>
-                      <td class="py-1 text-right">${p.aces}</td>
-                    </tr>`
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-              : `<p class="text-gray-400 italic">No data yet</p>`
-          }
+        <div class="bg-white rounded-2xl shadow-lg p-5 flex flex-col space-y-3">
+          <h3 class="text-2xl font-bold text-orange-500 mb-1">${split}</h3>
+
+          <!-- Split Summary -->
+          <div class="bg-orange-50 text-orange-800 rounded-lg px-4 py-2 text-sm font-medium flex justify-between">
+            <div>${teamTotal.games} games</div>
+            <div>${winrate}% winrate</div>
+            <div>${teamTotal.kills} K / ${teamTotal.deaths} D / ${teamTotal.assists} A</div>
+            <div>${avgKDA} team KDA</div>
+          </div>
+
+          <!-- Player Table -->
+          <div class="overflow-x-auto">
+            <table class="min-w-full text-sm text-left mt-2">
+              <thead class="text-gray-700 border-b font-semibold">
+                <tr>
+                  <th class="pb-1">#</th>
+                  <th class="pb-1">Player</th>
+                  <th class="pb-1 text-right">KDA</th>
+                  <th class="pb-1 text-right">W%</th>
+                  <th class="pb-1 text-right">Games</th>
+                  <th class="pb-1 text-right">K</th>
+                  <th class="pb-1 text-right">D</th>
+                  <th class="pb-1 text-right">A</th>
+                  <th class="pb-1 text-right">KP</th>
+                  <th class="pb-1 text-right">MVP</th>
+                  <th class="pb-1 text-right">ACE</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sorted
+                  .map(
+                    (p, i) => `
+                  <tr class="${i % 2 === 0 ? "bg-gray-50" : "bg-white"}">
+                    <td class="py-1">${i + 1}</td>
+                    <td class="py-1 font-medium">${p.name}</td>
+                    <td class="py-1 text-right">${p.avgKDA}</td>
+                    <td class="py-1 text-right">${p.winrate}%</td>
+                    <td class="py-1 text-right">${p.games}</td>
+                    <td class="py-1 text-right">${p.kills}</td>
+                    <td class="py-1 text-right">${p.deaths}</td>
+                    <td class="py-1 text-right">${p.assists}</td>
+                    <td class="py-1 text-right">${p.kp}</td>
+                    <td class="py-1 text-right">${p.mvps}</td>
+                    <td class="py-1 text-right">${p.aces}</td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
         </div>`;
     })
     .join("");
