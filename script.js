@@ -12,7 +12,7 @@ async function loadData() {
 
     status.textContent = `Loaded ${rows.length} records ✔`;
 
-    // Organize rows by split
+    // Group data by split
     const splits = { "Split 1": [], "Split 2": [], "Split 3": [], "Season 25": [] };
     rows.forEach((row) => {
       const split = (row["Split"] || "").trim();
@@ -30,6 +30,7 @@ async function loadData() {
 
 function calcStats(data) {
   const players = {};
+
   data.forEach((row) => {
     const name = row["Player"]?.trim();
     if (!name) return;
@@ -37,27 +38,43 @@ function calcStats(data) {
     const kills = parseFloat((row["Kills"] || "0").replace(",", ".")) || 0;
     const deaths = parseFloat((row["Deaths"] || "0").replace(",", ".")) || 0;
     const assists = parseFloat((row["Assists"] || "0").replace(",", ".")) || 0;
+    const result = (row["Result"] || "").trim().toUpperCase();
+    const win = result === "W" ? 1 : 0;
     const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
 
     if (!players[name])
-      players[name] = { kills: 0, deaths: 0, assists: 0, games: 0, kdaSum: 0 };
+      players[name] = {
+        kills: 0,
+        deaths: 0,
+        assists: 0,
+        games: 0,
+        wins: 0,
+        kdaSum: 0,
+      };
 
     players[name].kills += kills;
     players[name].deaths += deaths;
     players[name].assists += assists;
-    players[name].kdaSum += kda;
+    players[name].wins += win;
     players[name].games += 1;
+    players[name].kdaSum += kda;
   });
+
   return players;
 }
 
+// 🧠 Renders the main "Season 25 Overview" section
 function renderOverview(data) {
   const stats = calcStats(data);
   const sorted = Object.entries(stats)
     .map(([name, s]) => ({
       name,
+      kills: s.kills,
+      deaths: s.deaths,
+      assists: s.assists,
       avgKDA: (s.kdaSum / s.games).toFixed(2),
       games: s.games,
+      winrate: ((s.wins / s.games) * 100).toFixed(1),
     }))
     .sort((a, b) => b.avgKDA - a.avgKDA);
 
@@ -76,7 +93,10 @@ function renderOverview(data) {
             i === 0 ? "bg-yellow-100" : i === 1 ? "bg-gray-200" : "bg-orange-200"
           }">
             <h3 class="text-xl font-semibold">${["🥇", "🥈", "🥉"][i]} ${p.name}</h3>
-            <p class="text-gray-800 font-medium">${p.avgKDA} KDA over ${p.games} games</p>
+            <p class="text-gray-800 font-medium">${p.avgKDA} KDA</p>
+            <p class="text-gray-700">Winrate: ${p.winrate}%</p>
+            <p class="text-gray-600 text-sm">${p.kills} / ${p.deaths} / ${p.assists} total</p>
+            <p class="text-gray-500 text-xs">${p.games} games played</p>
           </div>`
           )
           .join("")}
@@ -84,6 +104,7 @@ function renderOverview(data) {
     </div>`;
 }
 
+// 🧠 Renders individual split cards
 function renderSplits(splits) {
   const container = document.getElementById("splits");
   const keys = ["Split 1", "Split 2", "Split 3"];
@@ -94,25 +115,47 @@ function renderSplits(splits) {
       const sorted = Object.entries(stats)
         .map(([name, s]) => ({
           name,
+          kills: s.kills,
+          deaths: s.deaths,
+          assists: s.assists,
           avgKDA: (s.kdaSum / s.games).toFixed(2),
           games: s.games,
+          winrate: ((s.wins / s.games) * 100).toFixed(1),
         }))
         .sort((a, b) => b.avgKDA - a.avgKDA);
-      const top = sorted.slice(0, 3);
 
       return `
         <div class="bg-white rounded-2xl shadow-md p-4">
           <h3 class="text-xl font-bold text-orange-500 mb-2">${split}</h3>
           ${
-            top.length > 0
-              ? `<ul class="text-sm text-gray-700 space-y-1">
-                  ${top
-                    .map(
-                      (p, i) =>
-                        `<li>${["🥇", "🥈", "🥉"][i]} <strong>${p.name}</strong> — ${p.avgKDA} KDA (${p.games} games)</li>`
-                    )
-                    .join("")}
-                </ul>`
+            sorted.length > 0
+              ? `<table class="min-w-full text-sm text-left">
+                  <thead class="text-gray-700 border-b">
+                    <tr>
+                      <th class="pb-1">Player</th>
+                      <th class="pb-1 text-right">KDA</th>
+                      <th class="pb-1 text-right">W%</th>
+                      <th class="pb-1 text-right">Kills</th>
+                      <th class="pb-1 text-right">Deaths</th>
+                      <th class="pb-1 text-right">Assists</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${sorted
+                      .map(
+                        (p) => `
+                      <tr class="border-b last:border-0">
+                        <td class="py-1 font-medium">${p.name}</td>
+                        <td class="py-1 text-right">${p.avgKDA}</td>
+                        <td class="py-1 text-right">${p.winrate}%</td>
+                        <td class="py-1 text-right">${p.kills}</td>
+                        <td class="py-1 text-right">${p.deaths}</td>
+                        <td class="py-1 text-right">${p.assists}</td>
+                      </tr>`
+                      )
+                      .join("")}
+                  </tbody>
+                </table>`
               : `<p class="text-gray-400 italic">No data yet</p>`
           }
         </div>`;
