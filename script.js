@@ -89,6 +89,7 @@ async function loadData() {
     console.error(err);
     status.textContent = "⚠️ Error loading data. Check Google Sheet access.";
   }
+  renderCharacterSelect();
 }
 
 // --- CALCULATE PLAYER STATS ---
