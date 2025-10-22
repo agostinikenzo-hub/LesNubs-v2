@@ -4,13 +4,12 @@ body {
 
 <style>
   @keyframes pulseSelect {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.08); opacity: 0.9; }
+    0%, 100% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.08); filter: brightness(1.05); }
   }
 
   .character.selected img {
     animation: pulseSelect 1.2s ease-in-out infinite;
-    filter: drop-shadow(0 0 12px rgba(249,115,22,0.7));
   }
 
   .character img {
@@ -19,7 +18,8 @@ body {
 
   .character:hover img {
     transform: scale(1.05);
-    filter: drop-shadow(0 0 8px rgba(255,165,0,0.4));
+    filter: brightness(1.1);
   }
 </style>
+
 
