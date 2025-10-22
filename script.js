@@ -93,6 +93,39 @@ async function loadData() {
   }
   renderCharacterSelect();
 }
+async function loadData() {
+  const status = document.getElementById("status");
+  const loader = document.getElementById("loading-screen");
+  try {
+    const res = await fetch(SHEET_URL);
+    const csv = await res.text();
+    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+    const rows = parsed.data;
+
+    // Once loaded, fade out the loading screen
+    setTimeout(() => {
+      loader.classList.add("fade-out");
+    }, 1500); // ensure animation runs for a second before fade out
+
+    status.textContent = `Loaded ${rows.length} records ✔`;
+
+    // existing logic...
+    const splits = { "Split 1": [], "Split 2": [], "Split 3": [], "Season 25": [] };
+    rows.forEach((row) => {
+      const split = (row["Split"] || "").trim();
+      if (splits[split]) splits[split].push(row);
+      splits["Season 25"].push(row);
+    });
+
+    renderSummary(splits["Season 25"]);
+    renderOverview(splits["Season 25"]);
+    renderKDATrends(splits["Season 25"]);
+    renderSplits(splits);
+  } catch (err) {
+    console.error(err);
+    status.textContent = "⚠️ Error loading data. Check Google Sheet access.";
+  }
+}
 
 // --- CALCULATE PLAYER STATS ---
 function calcStats(data) {
