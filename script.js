@@ -212,30 +212,31 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLIT TABLES WITH RANKING (robust detection) ---
+// --- SPLIT TABLES WITH AUTO DETECTION ---
 function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
 
-  // ✅ Automatically normalize split names
-  const allSplits = {
-    "Split 1": splitsRaw["Split 1"].length ? splitsRaw["Split 1"] : [],
-    "Split 2": splitsRaw["Split 2"].length ? splitsRaw["Split 2"] : [],
-    "Split 3": splitsRaw["Split 3"].length ? splitsRaw["Split 3"] : [],
-  };
+  // ✅ Flatten all data
+  const allData = splitsRaw["Season 25"] || [];
 
-  // ✅ If split values are numeric (1, 2, 3), remap automatically
-  Object.entries(splitsRaw["Season 25"]).forEach((row) => {
-    const splitVal = String(row["Split"] || "").trim();
-    if (splitVal === "1" || splitVal.toLowerCase() === "split 1")
-      allSplits["Split 1"].push(row);
-    else if (splitVal === "2" || splitVal.toLowerCase() === "split 2")
-      allSplits["Split 2"].push(row);
-    else if (splitVal === "3" || splitVal.toLowerCase() === "split 3")
-      allSplits["Split 3"].push(row);
+  // ✅ Group rows by split number (handles "1", "Split 1", "split 1", etc.)
+  const splitGroups = { "Split 1": [], "Split 2": [], "Split 3": [] };
+  allData.forEach((row) => {
+    const val = String(row["Split"] || "").trim().toLowerCase();
+    if (val === "1" || val === "split 1") splitGroups["Split 1"].push(row);
+    else if (val === "2" || val === "split 2") splitGroups["Split 2"].push(row);
+    else if (val === "3" || val === "split 3") splitGroups["Split 3"].push(row);
   });
 
-  // ✅ Render each split card
-  container.innerHTML = Object.entries(allSplits)
+  // ✅ Debug info (check browser console)
+  console.log("Split grouping result:", {
+    "Split 1": splitGroups["Split 1"].length,
+    "Split 2": splitGroups["Split 2"].length,
+    "Split 3": splitGroups["Split 3"].length,
+  });
+
+  // ✅ Render split cards
+  container.innerHTML = Object.entries(splitGroups)
     .map(([split, data]) => {
       const stats = calcStats(data);
       const sorted = Object.entries(stats)
@@ -303,6 +304,8 @@ function renderSplits(splitsRaw) {
         </div>`;
     })
     .join("");
+}
+
 }
 
 loadData();
