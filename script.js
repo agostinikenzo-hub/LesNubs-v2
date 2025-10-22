@@ -231,15 +231,14 @@ function renderSplits(splitsRaw) {
     splitStats[split] = calcStats(data);
   }
 
-  // --- Helper to get player KDA trend ---
+  // --- Helper: compare KDA for trend ---
   function getTrend(player, splitIndex) {
-    if (splitIndex === 0) return "—"; // Split 1 has no previous data
+    if (splitIndex === 0) return "→";
     const prevSplit = `Split ${splitIndex}`;
     const currSplit = `Split ${splitIndex + 1}`;
     const prevStats = splitStats[prevSplit]?.[player];
     const currStats = splitStats[currSplit]?.[player];
-    if (!prevStats || !currStats) return "—";
-
+    if (!prevStats || !currStats) return "→";
     const prevKDA =
       prevStats.deaths > 0
         ? (prevStats.kills + prevStats.assists) / prevStats.deaths
@@ -248,12 +247,12 @@ function renderSplits(splitsRaw) {
       currStats.deaths > 0
         ? (currStats.kills + currStats.assists) / currStats.deaths
         : 0;
-    if (currKDA > prevKDA + 0.1) return "↑";
-    if (currKDA < prevKDA - 0.1) return "↓";
-    return "→";
+    if (currKDA > prevKDA + 0.1) return "▲";
+    if (currKDA < prevKDA - 0.1) return "▼";
+    return "▶";
   }
 
-  // --- Render ---
+  // --- Render all splits ---
   container.innerHTML = Object.entries(splitGroups)
     .map(([split, data], idx) => {
       if (data.length === 0)
@@ -261,30 +260,47 @@ function renderSplits(splitsRaw) {
 
       const stats = calcStats(data);
       const sorted = Object.entries(stats)
-        .map(([name, s]) => ({
-          name,
-          kills: s.kills,
-          deaths: s.deaths,
-          assists: s.assists,
-          avgKDA:
+        .map(([name, s]) => {
+          const kda =
             s.deaths > 0
               ? ((s.kills + s.assists) / s.deaths).toFixed(2)
-              : (s.kills + s.assists).toFixed(2),
-          games: s.games,
-          winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
-          mvps: s.mvps,
-          aces: s.aces,
-          kp: s.kpCount > 0 ? (s.kpSum / s.kpCount).toFixed(1) + "%" : "—",
-          trend: getTrend(name, idx),
-        }))
+              : (s.kills + s.assists).toFixed(2);
+          const avgOPGG =
+            s.opggCount > 0 ? (s.opggSum / s.opggCount).toFixed(1) : "—";
+          return {
+            name,
+            kills: s.kills,
+            deaths: s.deaths,
+            assists: s.assists,
+            avgKDA: kda,
+            games: s.games,
+            winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
+            mvps: s.mvps,
+            aces: s.aces,
+            kp: s.kpCount > 0 ? (s.kpSum / s.kpCount).toFixed(1) + "%" : "—",
+            trend: getTrend(name, idx),
+            opgg: avgOPGG,
+          };
+        })
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
       // --- Split summary mini cards ---
       const totalGames = [...new Set(data.map((r) => r["Game #"]))].length;
-      const wins = data.filter((r) => String(r["Result"]).toLowerCase() === "yes").length;
-      const totalKills = data.reduce((sum, r) => sum + (parseInt(r["Kills"]) || 0), 0);
-      const totalDeaths = data.reduce((sum, r) => sum + (parseInt(r["Deaths"]) || 0), 0);
-      const totalAssists = data.reduce((sum, r) => sum + (parseInt(r["Assists"]) || 0), 0);
+      const wins = data.filter(
+        (r) => String(r["Result"]).toLowerCase() === "yes"
+      ).length;
+      const totalKills = data.reduce(
+        (sum, r) => sum + (parseInt(r["Kills"]) || 0),
+        0
+      );
+      const totalDeaths = data.reduce(
+        (sum, r) => sum + (parseInt(r["Deaths"]) || 0),
+        0
+      );
+      const totalAssists = data.reduce(
+        (sum, r) => sum + (parseInt(r["Assists"]) || 0),
+        0
+      );
       const avgTeamKDA =
         totalDeaths > 0
           ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
@@ -294,25 +310,25 @@ function renderSplits(splitsRaw) {
 
       return `
         <div class="bg-white rounded-2xl shadow-lg p-5 flex flex-col space-y-4">
-          <h3 class="text-2xl font-bold text-orange-500 mb-2">${split}</h3>
+          <h3 class="text-2xl font-bold text-orange-500 mb-1">${split}</h3>
 
           <!-- Mini Summary Cards -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="bg-orange-50 rounded-lg p-3 text-center text-orange-700 font-medium">
-              🕹️ <div class="text-lg font-bold">${totalGames}</div>
+            <div class="bg-orange-100 rounded-lg p-3 text-center text-orange-700 font-medium">
+              🎮 <div class="text-lg font-bold">${totalGames}</div>
               <div class="text-sm">Games Played</div>
             </div>
-            <div class="bg-green-50 rounded-lg p-3 text-center text-green-700 font-medium">
+            <div class="bg-green-100 rounded-lg p-3 text-center text-green-700 font-medium">
               ⚔️ <div class="text-lg font-bold">${totalKills} / ${totalDeaths} / ${totalAssists}</div>
               <div class="text-sm">Total K / D / A</div>
             </div>
-            <div class="bg-indigo-50 rounded-lg p-3 text-center text-indigo-700 font-medium">
-              📈 <div class="text-lg font-bold">${avgTeamKDA}</div>
+            <div class="bg-indigo-100 rounded-lg p-3 text-center text-indigo-700 font-medium">
+              📊 <div class="text-lg font-bold">${avgTeamKDA}</div>
               <div class="text-sm">${winrate}% Winrate</div>
             </div>
           </div>
 
-          <!-- Player Stats Table -->
+          <!-- Player Table -->
           <div class="overflow-x-auto mt-3">
             <table class="min-w-full text-sm text-left">
               <thead class="text-gray-700 border-b font-semibold">
@@ -329,33 +345,35 @@ function renderSplits(splitsRaw) {
                   <th class="text-right">KP</th>
                   <th class="text-right">MVP</th>
                   <th class="text-right">ACE</th>
+                  <th class="text-right">OP.GG</th>
                 </tr>
               </thead>
               <tbody>
                 ${sorted
-                  .map(
-                    (p, i) => `
-                  <tr class="${i % 2 === 0 ? "bg-gray-50" : "bg-white"}">
-                    <td>${i + 1}</td>
-                    <td class="font-medium">${p.name}</td>
-                    <td class="text-right">${p.avgKDA}</td>
-                    <td class="text-right ${
-                      p.trend === "↑"
+                  .map((p, i) => {
+                    let trendColor =
+                      p.trend === "▲"
                         ? "text-green-600"
-                        : p.trend === "↓"
+                        : p.trend === "▼"
                         ? "text-red-500"
-                        : "text-gray-400"
-                    }">${p.trend}</td>
-                    <td class="text-right">${p.winrate}%</td>
-                    <td class="text-right">${p.games}</td>
-                    <td class="text-right">${p.kills}</td>
-                    <td class="text-right">${p.deaths}</td>
-                    <td class="text-right">${p.assists}</td>
-                    <td class="text-right">${p.kp}</td>
-                    <td class="text-right">${p.mvps}</td>
-                    <td class="text-right">${p.aces}</td>
-                  </tr>`
-                  )
+                        : "text-gray-400";
+                    return `
+                    <tr class="${i % 2 === 0 ? "bg-gray-50" : "bg-white"}">
+                      <td>${i + 1}</td>
+                      <td class="font-medium">${p.name}</td>
+                      <td class="text-right">${p.avgKDA}</td>
+                      <td class="text-right ${trendColor}">${p.trend}</td>
+                      <td class="text-right">${p.winrate}%</td>
+                      <td class="text-right">${p.games}</td>
+                      <td class="text-right">${p.kills}</td>
+                      <td class="text-right">${p.deaths}</td>
+                      <td class="text-right">${p.assists}</td>
+                      <td class="text-right">${p.kp}</td>
+                      <td class="text-right">${p.mvps}</td>
+                      <td class="text-right">${p.aces}</td>
+                      <td class="text-right">${p.opgg}</td>
+                    </tr>`;
+                  })
                   .join("")}
               </tbody>
             </table>
