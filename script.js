@@ -212,13 +212,11 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLIT TABLES WITH UX IMPROVEMENTS ---
 function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
-
   const allData = splitsRaw["Season 25"] || [];
 
-  // ✅ Group by Split
+  // --- Group data by Split ---
   const splitGroups = { "Split 1": [], "Split 2": [], "Split 3": [] };
   allData.forEach((row) => {
     const val = String(row["Split"] || "").trim().toLowerCase();
@@ -227,17 +225,41 @@ function renderSplits(splitsRaw) {
     else if (val === "3" || val === "split 3") splitGroups["Split 3"].push(row);
   });
 
-  // ✅ Render each split
+  // --- Compute stats per split ---
+  const splitStats = {};
+  for (const [split, data] of Object.entries(splitGroups)) {
+    splitStats[split] = calcStats(data);
+  }
+
+  // --- Helper to get player KDA trend ---
+  function getTrend(player, splitIndex) {
+    if (splitIndex === 0) return "—"; // Split 1 has no previous data
+    const prevSplit = `Split ${splitIndex}`;
+    const currSplit = `Split ${splitIndex + 1}`;
+    const prevStats = splitStats[prevSplit]?.[player];
+    const currStats = splitStats[currSplit]?.[player];
+    if (!prevStats || !currStats) return "—";
+
+    const prevKDA =
+      prevStats.deaths > 0
+        ? (prevStats.kills + prevStats.assists) / prevStats.deaths
+        : 0;
+    const currKDA =
+      currStats.deaths > 0
+        ? (currStats.kills + currStats.assists) / currStats.deaths
+        : 0;
+    if (currKDA > prevKDA + 0.1) return "↑";
+    if (currKDA < prevKDA - 0.1) return "↓";
+    return "→";
+  }
+
+  // --- Render ---
   container.innerHTML = Object.entries(splitGroups)
-    .map(([split, data]) => {
+    .map(([split, data], idx) => {
       if (data.length === 0)
-        return `
-          <div class="bg-white rounded-2xl shadow-md p-6 flex items-center justify-center text-gray-400 italic">
-            ${split} — No data yet
-          </div>`;
+        return `<div class="bg-white rounded-2xl shadow-md p-6 flex items-center justify-center text-gray-400 italic">${split} — No data yet</div>`;
 
       const stats = calcStats(data);
-
       const sorted = Object.entries(stats)
         .map(([name, s]) => ({
           name,
@@ -253,55 +275,60 @@ function renderSplits(splitsRaw) {
           mvps: s.mvps,
           aces: s.aces,
           kp: s.kpCount > 0 ? (s.kpSum / s.kpCount).toFixed(1) + "%" : "—",
+          trend: getTrend(name, idx),
         }))
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
-      // ✅ Team summary (aggregate across players)
-      const teamTotal = {
-        games: [...new Set(data.map((r) => r["Game #"]))].length,
-        kills: data.reduce((sum, r) => sum + (parseInt(r["Kills"]) || 0), 0),
-        deaths: data.reduce((sum, r) => sum + (parseInt(r["Deaths"]) || 0), 0),
-        assists: data.reduce((sum, r) => sum + (parseInt(r["Assists"]) || 0), 0),
-        wins: data.filter((r) => String(r["Result"]).toLowerCase() === "yes")
-          .length,
-      };
-      const avgKDA =
-        teamTotal.deaths > 0
-          ? ((teamTotal.kills + teamTotal.assists) / teamTotal.deaths).toFixed(2)
+      // --- Split summary mini cards ---
+      const totalGames = [...new Set(data.map((r) => r["Game #"]))].length;
+      const wins = data.filter((r) => String(r["Result"]).toLowerCase() === "yes").length;
+      const totalKills = data.reduce((sum, r) => sum + (parseInt(r["Kills"]) || 0), 0);
+      const totalDeaths = data.reduce((sum, r) => sum + (parseInt(r["Deaths"]) || 0), 0);
+      const totalAssists = data.reduce((sum, r) => sum + (parseInt(r["Assists"]) || 0), 0);
+      const avgTeamKDA =
+        totalDeaths > 0
+          ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
           : "—";
       const winrate =
-        teamTotal.games > 0
-          ? ((teamTotal.wins / teamTotal.games) * 100).toFixed(1)
-          : "—";
+        totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
 
       return `
-        <div class="bg-white rounded-2xl shadow-lg p-5 flex flex-col space-y-3">
-          <h3 class="text-2xl font-bold text-orange-500 mb-1">${split}</h3>
+        <div class="bg-white rounded-2xl shadow-lg p-5 flex flex-col space-y-4">
+          <h3 class="text-2xl font-bold text-orange-500 mb-2">${split}</h3>
 
-          <!-- Split Summary -->
-          <div class="bg-orange-50 text-orange-800 rounded-lg px-4 py-2 text-sm font-medium flex justify-between">
-            <div>${teamTotal.games} games</div>
-            <div>${winrate}% winrate</div>
-            <div>${teamTotal.kills} K / ${teamTotal.deaths} D / ${teamTotal.assists} A</div>
-            <div>${avgKDA} team KDA</div>
+          <!-- Mini Summary Cards -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="bg-orange-50 rounded-lg p-3 text-center text-orange-700 font-medium">
+              🕹️ <div class="text-lg font-bold">${totalGames}</div>
+              <div class="text-sm">Games Played</div>
+            </div>
+            <div class="bg-green-50 rounded-lg p-3 text-center text-green-700 font-medium">
+              ⚔️ <div class="text-lg font-bold">${totalKills} / ${totalDeaths} / ${totalAssists}</div>
+              <div class="text-sm">Total K / D / A</div>
+            </div>
+            <div class="bg-indigo-50 rounded-lg p-3 text-center text-indigo-700 font-medium">
+              📈 <div class="text-lg font-bold">${avgTeamKDA}</div>
+              <div class="text-sm">${winrate}% Winrate</div>
+            </div>
           </div>
 
-          <!-- Player Table -->
-          <div class="overflow-x-auto">
-            <table class="min-w-full text-sm text-left mt-2">
+          <!-- Player Stats Table -->
+          <div class="overflow-x-auto mt-3">
+            <table class="min-w-full text-sm text-left">
               <thead class="text-gray-700 border-b font-semibold">
                 <tr>
-                  <th class="pb-1">#</th>
-                  <th class="pb-1">Player</th>
-                  <th class="pb-1 text-right">KDA</th>
-                  <th class="pb-1 text-right">W%</th>
-                  <th class="pb-1 text-right">Games</th>
-                  <th class="pb-1 text-right">K</th>
-                  <th class="pb-1 text-right">D</th>
-                  <th class="pb-1 text-right">A</th>
-                  <th class="pb-1 text-right">KP</th>
-                  <th class="pb-1 text-right">MVP</th>
-                  <th class="pb-1 text-right">ACE</th>
+                  <th>#</th>
+                  <th>Player</th>
+                  <th class="text-right">KDA</th>
+                  <th class="text-right">Trend</th>
+                  <th class="text-right">W%</th>
+                  <th class="text-right">Games</th>
+                  <th class="text-right">K</th>
+                  <th class="text-right">D</th>
+                  <th class="text-right">A</th>
+                  <th class="text-right">KP</th>
+                  <th class="text-right">MVP</th>
+                  <th class="text-right">ACE</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,17 +336,24 @@ function renderSplits(splitsRaw) {
                   .map(
                     (p, i) => `
                   <tr class="${i % 2 === 0 ? "bg-gray-50" : "bg-white"}">
-                    <td class="py-1">${i + 1}</td>
-                    <td class="py-1 font-medium">${p.name}</td>
-                    <td class="py-1 text-right">${p.avgKDA}</td>
-                    <td class="py-1 text-right">${p.winrate}%</td>
-                    <td class="py-1 text-right">${p.games}</td>
-                    <td class="py-1 text-right">${p.kills}</td>
-                    <td class="py-1 text-right">${p.deaths}</td>
-                    <td class="py-1 text-right">${p.assists}</td>
-                    <td class="py-1 text-right">${p.kp}</td>
-                    <td class="py-1 text-right">${p.mvps}</td>
-                    <td class="py-1 text-right">${p.aces}</td>
+                    <td>${i + 1}</td>
+                    <td class="font-medium">${p.name}</td>
+                    <td class="text-right">${p.avgKDA}</td>
+                    <td class="text-right ${
+                      p.trend === "↑"
+                        ? "text-green-600"
+                        : p.trend === "↓"
+                        ? "text-red-500"
+                        : "text-gray-400"
+                    }">${p.trend}</td>
+                    <td class="text-right">${p.winrate}%</td>
+                    <td class="text-right">${p.games}</td>
+                    <td class="text-right">${p.kills}</td>
+                    <td class="text-right">${p.deaths}</td>
+                    <td class="text-right">${p.assists}</td>
+                    <td class="text-right">${p.kp}</td>
+                    <td class="text-right">${p.mvps}</td>
+                    <td class="text-right">${p.aces}</td>
                   </tr>`
                   )
                   .join("")}
