@@ -28,6 +28,7 @@ async function loadData() {
 
     renderSummary(splits["Season 25"]);
     renderOverview(splits["Season 25"]);
+    renderKDATrends(splits["Season 25"]);
     renderSplits(splits);
   } catch (err) {
     console.error(err);
@@ -67,6 +68,7 @@ function calcStats(data) {
         kdaSum: 0,
         mvps: 0,
         aces: 0,
+        gameHistory: [],
       };
 
     players[name].kills += kills;
@@ -75,6 +77,7 @@ function calcStats(data) {
     players[name].wins += win;
     players[name].games += 1;
     players[name].kdaSum += kda;
+    players[name].gameHistory.push(kda);
     if (mvp === "yes") players[name].mvps += 1;
     if (ace === "yes") players[name].aces += 1;
   });
@@ -82,30 +85,27 @@ function calcStats(data) {
   return players;
 }
 
-// 🆕 Season summary card (fixed total games + winrate)
+// 🆕 Season summary card
 function renderSummary(data) {
   const stats = calcStats(data);
   const all = Object.values(stats);
 
-  // Totals
   const totalKills = all.reduce((s, p) => s + p.kills, 0);
   const totalDeaths = all.reduce((s, p) => s + p.deaths, 0);
   const totalAssists = all.reduce((s, p) => s + p.assists, 0);
 
-  // ✅ Count unique game numbers
+  // ✅ Unique games
   const uniqueGames = new Set(
-    data
-      .map((r) => (r["Game #"] || "").trim())
-      .filter((g) => g !== "" && !isNaN(g))
+    data.map((r) => (r["Game #"] || "").trim()).filter((g) => g && !isNaN(g))
   );
   const totalGames = uniqueGames.size;
 
-  // ✅ Count unique wins (yes = win)
+  // ✅ Wins
   const winGames = new Set(
     data
       .filter((r) => (r["Result"] || "").toLowerCase() === "yes")
       .map((r) => (r["Game #"] || "").trim())
-      .filter((g) => g !== "" && !isNaN(g))
+      .filter((g) => g && !isNaN(g))
   );
 
   const winrate =
@@ -129,7 +129,7 @@ function renderSummary(data) {
     </div>`;
 }
 
-// 🏆 Overview (Top 3 Players)
+// 🏆 Top 3 Overview (using season-wide KDA)
 function renderOverview(data) {
   const stats = calcStats(data);
   const sorted = Object.entries(stats)
@@ -138,7 +138,10 @@ function renderOverview(data) {
       kills: s.kills,
       deaths: s.deaths,
       assists: s.assists,
-      avgKDA: (s.kdaSum / s.games).toFixed(2),
+      avgKDA:
+        s.deaths > 0
+          ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+          : (s.kills + s.assists).toFixed(2),
       games: s.games,
       winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
       mvps: s.mvps,
@@ -150,19 +153,26 @@ function renderOverview(data) {
   const container = document.getElementById("season-overview");
 
   container.innerHTML = `
-    <div class="bg-white shadow-lg rounded-2xl p-6 text-center">
+    <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
       <h2 class="text-2xl font-bold text-orange-600 mb-4">🏆 Season 25 Overview</h2>
-      <p class="text-gray-700 mb-4">Top 3 Players by Average KDA</p>
+      <p class="text-gray-700 mb-4">Top 3 Players by Season-wide KDA</p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
         ${top
           .map(
             (p, i) => `
           <div class="rounded-xl p-4 shadow-md bg-neutral-50">
-            <h3 class="text-xl font-semibold">${["🥇", "🥈", "🥉"][i]} ${p.name}</h3>
+            <h3 class="text-xl font-semibold">${["🥇", "🥈", "🥉"][i]} ${
+              p.name
+            }</h3>
             <p class="text-gray-800 font-medium">${p.avgKDA} KDA</p>
-            <p class="text-gray-700">Winrate: ${p.winrate}%</p>
-            <p class="text-gray-600 text-sm">${p.kills} / ${p.deaths} / ${p.assists} total</p>
-            <p class="text-gray-500 text-xs">${p.games} games | ${p.mvps} MVP | ${p.aces} ACE</p>
+            <p class="text-gray-500 text-xs italic">(season-wide ratio)</p>
+            <p class="text-gray-700 mt-1">Winrate: ${p.winrate}%</p>
+            <p class="text-gray-600 text-sm">${p.kills} / ${p.deaths} / ${
+              p.assists
+            } total</p>
+            <p class="text-gray-500 text-xs">${p.games} games | ${p.mvps} MVP | ${
+              p.aces
+            } ACE</p>
           </div>`
           )
           .join("")}
@@ -170,7 +180,65 @@ function renderOverview(data) {
     </div>`;
 }
 
-// 📊 Split details
+// 📈 New KDA Trend Card
+function renderKDATrends(data) {
+  const stats = calcStats(data);
+  const container = document.getElementById("kda-trends");
+
+  const players = Object.entries(stats).map(([name, s]) => {
+    const history = s.gameHistory;
+    if (history.length < 10)
+      return { name, trend: "⚪ insufficient data", color: "text-gray-400" };
+
+    const recent = history.slice(-10);
+    const previous = history.slice(0, -10);
+
+    const avgRecent =
+      recent.reduce((a, b) => a + b, 0) / (recent.length || 1);
+    const avgPrevious =
+      previous.reduce((a, b) => a + b, 0) / (previous.length || 1);
+
+    const diff = avgRecent - avgPrevious;
+    let trend, color;
+
+    if (diff > 0.1) {
+      trend = "📈 improving";
+      color = "text-green-600";
+    } else if (diff < -0.1) {
+      trend = "📉 declining";
+      color = "text-red-600";
+    } else {
+      trend = "➖ stable";
+      color = "text-gray-600";
+    }
+
+    return { name, trend, color, avgRecent: avgRecent.toFixed(2) };
+  });
+
+  container.innerHTML = `
+    <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
+      <h2 class="text-2xl font-bold text-orange-600 mb-4">📊 Player KDA Trends</h2>
+      <p class="text-gray-700 mb-4">Last 10 games vs previous games</p>
+      <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+        ${players
+          .map(
+            (p) => `
+          <div class="rounded-xl p-3 bg-neutral-50 shadow-md">
+            <h3 class="font-semibold text-lg">${p.name}</h3>
+            <p class="${p.color}">${p.trend}</p>
+            ${
+              p.avgRecent
+                ? `<p class="text-gray-600 text-sm">Last 10 avg KDA: ${p.avgRecent}</p>`
+                : ""
+            }
+          </div>`
+          )
+          .join("")}
+      </div>
+    </div>`;
+}
+
+// 📊 Split tables
 function renderSplits(splits) {
   const container = document.getElementById("splits");
   const keys = ["Split 1", "Split 2", "Split 3"];
@@ -184,7 +252,10 @@ function renderSplits(splits) {
           kills: s.kills,
           deaths: s.deaths,
           assists: s.assists,
-          avgKDA: (s.kdaSum / s.games).toFixed(2),
+          avgKDA:
+            s.deaths > 0
+              ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+              : (s.kills + s.assists).toFixed(2),
           games: s.games,
           winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
           mvps: s.mvps,
