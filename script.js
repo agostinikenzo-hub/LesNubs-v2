@@ -4,6 +4,65 @@ const SHEET_URL =
 
 let trendWindow = 10; // Default trend window
 
+// --- Character Select Data ---
+const players = [
+  { name: "Betzhamo", svg: "assets/avatars/betzhamo.svg" },
+  { name: "Jansen", svg: "assets/avatars/jansen.svg" },
+  { name: "Sweeney", svg: "assets/avatars/sweeney.svg" },
+  { name: "Ota", svg: "assets/avatars/ota.svg" },
+  { name: "Achten", svg: "assets/avatars/achten.svg" },
+  { name: "HH", svg: "assets/avatars/hh.svg" },
+];
+
+function renderCharacterSelect() {
+  const container = document.getElementById("avatars");
+  if (!container) return;
+
+  container.innerHTML = players
+    .map(
+      (p) => `
+      <div class="character relative cursor-pointer transition-transform duration-300 hover:scale-105" data-player="${p.name}">
+        <div class="relative w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-md border border-gray-200">
+          <img src="${p.svg}" alt="${p.name}" class="w-16 h-16 object-contain" loading="lazy"/>
+          <div class="select-ring absolute inset-0 border-4 border-orange-400 rounded-full opacity-0 transition-opacity duration-200 pointer-events-none"></div>
+        </div>
+        <p class="mt-2 text-sm font-semibold text-gray-700">${p.name}</p>
+      </div>`
+    )
+    .join("");
+
+  document.querySelectorAll(".character").forEach((el) => {
+    el.addEventListener("click", () => selectCharacter(el.dataset.player));
+  });
+}
+
+let selectedPlayer = null;
+
+function selectCharacter(name) {
+  selectedPlayer = name;
+
+  // Visual highlight
+  document.querySelectorAll(".character").forEach((el) => el.classList.remove("selected"));
+  const el = document.querySelector(`.character[data-player="${name}"]`);
+  if (el) el.classList.add("selected");
+
+  // Filter tables for selected player
+  highlightPlayerStats(name);
+}
+
+function highlightPlayerStats(name) {
+  const tables = document.querySelectorAll("tbody tr");
+  tables.forEach((row) => {
+    if (row.textContent.toLowerCase().includes(name.toLowerCase())) {
+      row.classList.add("bg-orange-50");
+      row.style.opacity = "1";
+    } else {
+      row.classList.remove("bg-orange-50");
+      row.style.opacity = "0.4";
+    }
+  });
+}
+
 // --- LOAD DATA ---
 async function loadData() {
   const status = document.getElementById("status");
