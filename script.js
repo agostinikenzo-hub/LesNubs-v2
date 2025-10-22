@@ -212,21 +212,42 @@ function setTrendWindow(n) {
   loadData();
 }
 
-// --- SPLIT TABLES WITH RANKING ---
-function renderSplits(splits) {
+// --- SPLIT TABLES WITH RANKING (robust detection) ---
+function renderSplits(splitsRaw) {
   const container = document.getElementById("splits");
-  const keys = ["Split 1", "Split 2", "Split 3"];
 
-  container.innerHTML = keys
-    .map((split) => {
-      const stats = calcStats(splits[split]);
+  // ✅ Automatically normalize split names
+  const allSplits = {
+    "Split 1": splitsRaw["Split 1"].length ? splitsRaw["Split 1"] : [],
+    "Split 2": splitsRaw["Split 2"].length ? splitsRaw["Split 2"] : [],
+    "Split 3": splitsRaw["Split 3"].length ? splitsRaw["Split 3"] : [],
+  };
+
+  // ✅ If split values are numeric (1, 2, 3), remap automatically
+  Object.entries(splitsRaw["Season 25"]).forEach((row) => {
+    const splitVal = String(row["Split"] || "").trim();
+    if (splitVal === "1" || splitVal.toLowerCase() === "split 1")
+      allSplits["Split 1"].push(row);
+    else if (splitVal === "2" || splitVal.toLowerCase() === "split 2")
+      allSplits["Split 2"].push(row);
+    else if (splitVal === "3" || splitVal.toLowerCase() === "split 3")
+      allSplits["Split 3"].push(row);
+  });
+
+  // ✅ Render each split card
+  container.innerHTML = Object.entries(allSplits)
+    .map(([split, data]) => {
+      const stats = calcStats(data);
       const sorted = Object.entries(stats)
         .map(([name, s]) => ({
           name,
           kills: s.kills,
           deaths: s.deaths,
           assists: s.assists,
-          avgKDA: s.deaths > 0 ? ((s.kills + s.assists) / s.deaths).toFixed(2) : (s.kills + s.assists).toFixed(2),
+          avgKDA:
+            s.deaths > 0
+              ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+              : (s.kills + s.assists).toFixed(2),
           games: s.games,
           winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
           mvps: s.mvps,
