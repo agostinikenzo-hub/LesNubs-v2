@@ -52,6 +52,9 @@ body {
     visibility: hidden;
   }
 }
+.fade-bg {
+  background: linear-gradient(135deg, #fffaf5, #eef2ff);
+}
 
 
 </style>
