@@ -340,6 +340,7 @@ function renderOverview(data) {
             <h3 class="font-semibold">${p.name}</h3>
             <p class="text-gray-800 text-sm">${p.avgKDA} KDA</p>
             <p class="text-gray-600 text-xs">${p.winrate}% winrate</p>
+            <p class="text-gray-500 text-xs">${p.games} games | ${p.mvps} MVP | ${p.aces} ACE</p>
           </div>`
           )
           .join("")}
