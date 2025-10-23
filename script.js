@@ -182,7 +182,7 @@ function calcStats(data) {
   return players;
 }
 
-// --- SEASON SUMMARY ---
+// --- SEASON SUMMARY (with mini cards) ---
 function renderSummary(data) {
   const stats = calcStats(data);
   const all = Object.values(stats);
@@ -200,24 +200,46 @@ function renderSummary(data) {
   const wins = winningGames.size;
 
   const winrate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
-  const avgKDA =
-    totalDeaths > 0
-      ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
-      : "∞";
+  const avgKDA = totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "∞";
+
+  // Average Kill Participation (if available)
+  const kpValues = data
+    .map((r) => parseFloat((r["Kill Part %"] || "").replace(",", ".")))
+    .filter((n) => !isNaN(n));
+  const avgKP = kpValues.length > 0 ? (kpValues.reduce((a, b) => a + b, 0) / kpValues.length).toFixed(1) : "0.0";
 
   document.getElementById("season-summary").innerHTML = `
     <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
-      <h2 class="text-2xl font-bold text-orange-600 mb-2">📅 Season 25 Summary</h2>
-      <div class="flex flex-wrap justify-center gap-6 text-gray-700">
-        <div><span class="font-semibold">${totalGames}</span> games</div>
-        <div><span class="font-semibold">${winrate}%</span> winrate</div>
+      <h2 class="text-2xl font-bold text-orange-600 mb-4">📅 Season 25 Summary</h2>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        <div class="bg-orange-50 p-3 rounded-lg">
+          <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Games</p>
+        </div>
+        <div class="bg-green-50 p-3 rounded-lg">
+          <p class="text-green-600 font-semibold text-lg">${winrate}%</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Winrate</p>
+        </div>
+        <div class="bg-indigo-50 p-3 rounded-lg">
+          <p class="text-indigo-600 font-semibold text-lg">${avgKDA}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Team KDA</p>
+        </div>
+        <div class="bg-sky-50 p-3 rounded-lg">
+          <p class="text-sky-600 font-semibold text-lg">${avgKP}%</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Avg KP</p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap justify-center gap-6 text-gray-700 text-sm">
         <div><span class="font-semibold">${totalKills}</span> kills</div>
         <div><span class="font-semibold">${totalDeaths}</span> deaths</div>
         <div><span class="font-semibold">${totalAssists}</span> assists</div>
-        <div><span class="font-semibold">${avgKDA}</span> team KDA</div>
+        <div><span class="font-semibold">${(totalKills + totalAssists).toLocaleString()}</span> total contribution</div>
       </div>
     </div>`;
 }
+
 
 // --- OVERVIEW (TOP 3 + NEXT 3) ---
 function renderOverview(data) {
