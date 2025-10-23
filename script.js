@@ -182,7 +182,7 @@ function calcStats(data) {
   return players;
 }
 
-// --- SEASON SUMMARY (with mini cards) ---
+// --- SEASON SUMMARY (with mini cards + avg game time) ---
 function renderSummary(data) {
   const stats = calcStats(data);
   const all = Object.values(stats);
@@ -190,6 +190,7 @@ function renderSummary(data) {
   const totalDeaths = all.reduce((s, p) => s + p.deaths, 0);
   const totalAssists = all.reduce((s, p) => s + p.assists, 0);
 
+  // --- Games and Winrate ---
   const allGames = [...new Set(data.map((r) => r["Game #"]))];
   const totalGames = allGames.length;
 
@@ -202,17 +203,44 @@ function renderSummary(data) {
   const winrate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
   const avgKDA = totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "∞";
 
-  // Average Kill Participation (if available)
+  // --- Average Kill Participation (if available) ---
   const kpValues = data
     .map((r) => parseFloat((r["Kill Part %"] || "").replace(",", ".")))
     .filter((n) => !isNaN(n));
   const avgKP = kpValues.length > 0 ? (kpValues.reduce((a, b) => a + b, 0) / kpValues.length).toFixed(1) : "0.0";
 
+  // --- Average Game Duration ---
+  const timeEntries = [];
+  const seenGames = new Set();
+
+  data.forEach((r) => {
+    const gameNum = r["Game #"];
+    const timeStr = (r["TIME"] || "").trim();
+    if (!timeStr || seenGames.has(gameNum)) return; // skip duplicates / empty
+    seenGames.add(gameNum);
+
+    const match = timeStr.match(/(\d+)m\s*(\d+)?s?/);
+    if (match) {
+      const minutes = parseInt(match[1]) || 0;
+      const seconds = parseInt(match[2]) || 0;
+      const totalSeconds = minutes * 60 + seconds;
+      timeEntries.push(totalSeconds);
+    }
+  });
+
+  const validGames = timeEntries.length;
+  const avgTimeSeconds = validGames > 0 ? Math.round(timeEntries.reduce((a, b) => a + b, 0) / validGames) : 0;
+  const avgMinutes = Math.floor(avgTimeSeconds / 60);
+  const avgSeconds = avgTimeSeconds % 60;
+  const avgTimeFormatted = validGames > 0 ? `${avgMinutes}m ${avgSeconds}s` : "—";
+
+  // --- Render ---
   document.getElementById("season-summary").innerHTML = `
     <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
       <h2 class="text-2xl font-bold text-orange-600 mb-4">📅 Season 25 Summary</h2>
 
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <!-- TOP STAT CARDS -->
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
         <div class="bg-orange-50 p-3 rounded-lg">
           <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
           <p class="text-xs text-gray-600 uppercase tracking-wide">Games</p>
@@ -229,28 +257,34 @@ function renderSummary(data) {
           <p class="text-sky-600 font-semibold text-lg">${avgKP}%</p>
           <p class="text-xs text-gray-600 uppercase tracking-wide">Avg KP</p>
         </div>
+        <div class="bg-amber-50 p-3 rounded-lg">
+          <p class="text-amber-600 font-semibold text-lg">${avgTimeFormatted}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Avg Game Time (${validGames})</p>
+        </div>
       </div>
 
+      <!-- SECOND ROW: Totals -->
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-gray-700 text-sm mt-4">
-  <div class="bg-rose-50 p-3 rounded-lg text-center">
-    <p class="text-rose-600 font-semibold text-lg">${totalKills}</p>
-    <p class="text-xs text-gray-600 uppercase tracking-wide">Kills</p>
-  </div>
-  <div class="bg-gray-50 p-3 rounded-lg text-center">
-    <p class="text-gray-700 font-semibold text-lg">${totalDeaths}</p>
-    <p class="text-xs text-gray-600 uppercase tracking-wide">Deaths</p>
-  </div>
-  <div class="bg-emerald-50 p-3 rounded-lg text-center">
-    <p class="text-emerald-600 font-semibold text-lg">${totalAssists}</p>
-    <p class="text-xs text-gray-600 uppercase tracking-wide">Assists</p>
-  </div>
-  <div class="bg-sky-50 p-3 rounded-lg text-center">
-    <p class="text-sky-600 font-semibold text-lg">${(totalKills + totalAssists).toLocaleString()}</p>
-    <p class="text-xs text-gray-600 uppercase tracking-wide">Total Contribution</p>
-</div>
-
+        <div class="bg-rose-50 p-3 rounded-lg text-center">
+          <p class="text-rose-600 font-semibold text-lg">${totalKills}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Kills</p>
+        </div>
+        <div class="bg-gray-50 p-3 rounded-lg text-center">
+          <p class="text-gray-700 font-semibold text-lg">${totalDeaths}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Deaths</p>
+        </div>
+        <div class="bg-emerald-50 p-3 rounded-lg text-center">
+          <p class="text-emerald-600 font-semibold text-lg">${totalAssists}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Assists</p>
+        </div>
+        <div class="bg-sky-50 p-3 rounded-lg text-center">
+          <p class="text-sky-600 font-semibold text-lg">${(totalKills + totalAssists).toLocaleString()}</p>
+          <p class="text-xs text-gray-600 uppercase tracking-wide">Total Contribution</p>
+        </div>
+      </div>
     </div>`;
 }
+
 
 
 // --- OVERVIEW (TOP 3 + NEXT 3) ---
