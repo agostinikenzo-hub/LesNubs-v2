@@ -39,7 +39,8 @@ try:
     ws = sheet.sheet1
 
     print(f"✅ Google Sheets connected! Sheet title: {ws.title}")
-    ws.update("A1", "✅ Test Connection Successful!")
-    print("🟢 Test value written to A1")
+ws.update("A1:A1", [["✅ Test Connection Successful!"]])
+print("🟢 Test value written to A1")
+
 except Exception as e:
     print("❌ Google Sheets test failed:", e)
