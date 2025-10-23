@@ -231,12 +231,24 @@ function renderSummary(data) {
         </div>
       </div>
 
-      <div class="flex flex-wrap justify-center gap-6 text-gray-700 text-sm">
-        <div><span class="font-semibold">${totalKills}</span> kills</div>
-        <div><span class="font-semibold">${totalDeaths}</span> deaths</div>
-        <div><span class="font-semibold">${totalAssists}</span> assists</div>
-        <div><span class="font-semibold">${(totalKills + totalAssists).toLocaleString()}</span> total contribution</div>
-      </div>
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-gray-700 text-sm mt-4">
+  <div class="bg-rose-50 p-3 rounded-lg text-center">
+    <p class="text-rose-600 font-semibold text-lg">${totalKills}</p>
+    <p class="text-xs text-gray-600 uppercase tracking-wide">Kills</p>
+  </div>
+  <div class="bg-gray-50 p-3 rounded-lg text-center">
+    <p class="text-gray-700 font-semibold text-lg">${totalDeaths}</p>
+    <p class="text-xs text-gray-600 uppercase tracking-wide">Deaths</p>
+  </div>
+  <div class="bg-emerald-50 p-3 rounded-lg text-center">
+    <p class="text-emerald-600 font-semibold text-lg">${totalAssists}</p>
+    <p class="text-xs text-gray-600 uppercase tracking-wide">Assists</p>
+  </div>
+  <div class="bg-sky-50 p-3 rounded-lg text-center">
+    <p class="text-sky-600 font-semibold text-lg">${(totalKills + totalAssists).toLocaleString()}</p>
+    <p class="text-xs text-gray-600 uppercase tracking-wide">Total Contribution</p>
+</div>
+
     </div>`;
 }
 
