@@ -1,28 +1,63 @@
 name: Update OP.GG Data to Google Sheets
 
 on:
-  schedule:
-    - cron: "0 9 * * *"  # run every day at 9:00 UTC
   workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *" # every day 09:00 UTC
 
 jobs:
   update:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --- Node setup for OP.GG diagnostic + sync ---
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          
-      - name: Check OP.GG Summoner Names
-        run: node check-opgg-names.js
 
       - name: Install Node dependencies
         run: npm install
 
+      # --- 🔍 Diagnostic step: check exact OP.GG summoner names ---
+      - name: Check OP.GG Summoner Names
+        run: |
+          echo "Running OP.GG name diagnostic..."
+          cat <<'EOF' > check-opgg-names.js
+          import axios from "axios";
+
+          const TEAM = [
+            "Amazing Cholo",
+            "YungSweeneyEUW",
+            "BetzhamoEUW",
+            "denotesEUW",
+            "BurningelfEUW",
+            "UnbreakableHaideEUW"
+          ];
+
+          async function main() {
+            const region = "euw";
+            for (const name of TEAM) {
+              const url = \`https://www.op.gg/api/v1.0/internal/bypass/summoner/name=\${encodeURIComponent(name)}?region=\${region}\`;
+              try {
+                const res = await axios.get(url);
+                const data = res.data.data;
+                console.log(\`\${name} → \${data?.summoner_name || "NOT FOUND"}\`);
+              } catch (e) {
+                console.log(\`\${name} → ERROR: \${e.message}\`);
+              }
+            }
+          }
+
+          main();
+          EOF
+
+          node check-opgg-names.js
+
+      # --- Python setup ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -31,6 +66,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install gspread google-auth
 
+      # --- Run the actual OP.GG → Sheets sync ---
       - name: Run OP.GG → Sheets sync
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
