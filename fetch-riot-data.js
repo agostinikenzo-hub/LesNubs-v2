@@ -132,21 +132,28 @@ async function main() {
     }
   }
 
-  if (allRows.length === 0) {
+    if (allRows.length === 0) {
     console.log("✅ No new qualifying matches found.");
     return;
   }
 
-  // 3️⃣ Append rows to the bottom (preserve existing data)
-  await sheets.spreadsheets.values.append({
+  // 🧮 Find the first empty row after existing data
+  const currentData = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A1`,
+    range: `${SHEET_NAME}!A:A`,
+  });
+  const lastRow = (currentData.data.values?.length || 0) + 1;
+
+  // 3️⃣ Append rows starting after header
+  const targetRange = `${SHEET_NAME}!A${lastRow}`;
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SHEET_ID,
+    range: targetRange,
     valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
     requestBody: { values: allRows },
   });
 
-  console.log(`✅ Added ${allRows.length} new matches to Google Sheets.`);
+  console.log(`✅ Added ${allRows.length} new matches starting at row ${lastRow}.`);
 }
 
 main().catch((e) => console.error("❌ Script failed:", e.message));
