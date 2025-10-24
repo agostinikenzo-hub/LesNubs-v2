@@ -1,9 +1,7 @@
-name: Update OP.GG Data to Google Sheets
+name: Update OP.GG Data to Google Sheets (Debug Mode)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * *" # every day 09:00 UTC
 
 jobs:
   update:
@@ -13,7 +11,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --- Node setup for OP.GG diagnostic + sync ---
+      # --- Node setup ---
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -22,38 +20,42 @@ jobs:
       - name: Install Node dependencies
         run: npm install
 
-            # --- 🔍 Diagnostic step: check exact OP.GG summoner names ---
-      - name: Check OP.GG Summoner Names
+      # --- 🧩 DEBUG: Print OP.GG data for one player ---
+      - name: Debug OP.GG API output for one player
         run: |
-          echo "Running OP.GG name diagnostic..."
-          echo 'import axios from "axios";
+          echo "Fetching sample data for Amazing Cholo..."
+          cat <<'EOF' > debug-opgg.js
+          import axios from "axios";
 
-          const TEAM = [
-            "Amazing Cholo",
-            "YungSweeneyEUW",
-            "BetzhamoEUW",
-            "denotesEUW",
-            "BurningelfEUW",
-            "UnbreakableHaideEUW"
-          ];
+          const region = "euw";
+          const summoner = "Amazing Cholo";
 
-          async function main() {
-            const region = "euw";
-            for (const name of TEAM) {
-              const url = "https://www.op.gg/api/v1.0/internal/bypass/summoner/name=" + encodeURIComponent(name) + "?region=" + region;
-              try {
-                const res = await axios.get(url);
-                const data = res.data.data;
-                console.log(name + " → " + (data?.summoner_name || "NOT FOUND"));
-              } catch (e) {
-                console.log(name + " → ERROR: " + e.message);
+          async function run() {
+            const infoUrl = "https://www.op.gg/api/v1.0/summoners/" + region + "/" + encodeURIComponent(summoner);
+            try {
+              const infoRes = await axios.get(infoUrl);
+              console.log("=== Summoner Info ===");
+              console.log(JSON.stringify(infoRes.data, null, 2));
+
+              const summonerId = infoRes.data?.data?.summoner_id || infoRes.data?.id;
+              if (!summonerId) {
+                console.error("⚠️ Could not find summoner ID for " + summoner);
+                return;
               }
+
+              const matchesUrl = "https://www.op.gg/api/v1.0/games/" + region + "/summoners/" + summonerId + "?limit=2";
+              const matchesRes = await axios.get(matchesUrl);
+              console.log("=== Last 2 Games ===");
+              console.log(JSON.stringify(matchesRes.data, null, 2));
+            } catch (e) {
+              console.error("❌ Error fetching data:", e.message);
             }
           }
 
-          main();' > check-opgg-names.js
+          run();
+          EOF
 
-          node check-opgg-names.js
+          node debug-opgg.js
 
       # --- Python setup ---
       - name: Set up Python
@@ -64,7 +66,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install gspread google-auth
 
-      # --- Run the actual OP.GG → Sheets sync ---
+      # --- 🔁 Run the full OP.GG → Sheets sync ---
       - name: Run OP.GG → Sheets sync
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
