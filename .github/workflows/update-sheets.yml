@@ -22,12 +22,11 @@ jobs:
       - name: Install Node dependencies
         run: npm install
 
-      # --- 🔍 Diagnostic step: check exact OP.GG summoner names ---
+            # --- 🔍 Diagnostic step: check exact OP.GG summoner names ---
       - name: Check OP.GG Summoner Names
         run: |
           echo "Running OP.GG name diagnostic..."
-          cat <<'EOF' > check-opgg-names.js
-          import axios from "axios";
+          echo 'import axios from "axios";
 
           const TEAM = [
             "Amazing Cholo",
@@ -41,19 +40,18 @@ jobs:
           async function main() {
             const region = "euw";
             for (const name of TEAM) {
-              const url = \`https://www.op.gg/api/v1.0/internal/bypass/summoner/name=\${encodeURIComponent(name)}?region=\${region}\`;
+              const url = "https://www.op.gg/api/v1.0/internal/bypass/summoner/name=" + encodeURIComponent(name) + "?region=" + region;
               try {
                 const res = await axios.get(url);
                 const data = res.data.data;
-                console.log(\`\${name} → \${data?.summoner_name || "NOT FOUND"}\`);
+                console.log(name + " → " + (data?.summoner_name || "NOT FOUND"));
               } catch (e) {
-                console.log(\`\${name} → ERROR: \${e.message}\`);
+                console.log(name + " → ERROR: " + e.message);
               }
             }
           }
 
-          main();
-          EOF
+          main();' > check-opgg-names.js
 
           node check-opgg-names.js
 
