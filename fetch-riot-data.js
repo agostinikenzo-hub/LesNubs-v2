@@ -5,11 +5,11 @@ import { google } from "googleapis";
 // --- ENV ---
 const GOOGLE_CREDENTIALS = process.env.GOOGLE_CREDENTIALS;
 const SHEET_ID = process.env.SHEET_ID;
-const SHEET_NAME = "Game_logs"; // make sure this matches your actual sheet/tab name
+const SHEET_NAME = "Game_logs";
 
 // --- TEAM ---
 const TEAM = [
-  { name: "JANSEN", summoner: "AmazingCholoEUW" },
+  { name: "JANSEN", summoner: "Amazing Cholo" },
   { name: "SWEENEY", summoner: "YungSweeneyEUW" },
   { name: "BENZ", summoner: "BetzhamoEUW" },
   { name: "OTA", summoner: "denotesEUW" },
@@ -45,107 +45,131 @@ async function fetchOpggMatches(summonerName) {
 async function main() {
   const sheets = await getSheets();
 
-  // 1️⃣ Load existing match IDs to avoid duplicates
-  const existingIdsRes = await sheets.spreadsheets.values.get({
+  // 1️⃣ Load existing rows and IDs
+  const existingRes = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
     range: `${SHEET_NAME}!A2:A`,
   });
-  const existingIds = new Set(existingIdsRes.data.values?.flat() || []);
+  const existingValues = existingRes.data.values || [];
+  const existingIds = new Set(existingValues.flat());
 
-  // 2️⃣ Get last used Game # from sheet
-  const lastGameNumber = existingIds.size;
+  // Determine next Game #
+  const lastGameNumber = existingValues.length > 0 ? parseInt(existingValues.at(-1)[0]) || 0 : 0;
+  let nextGameNumber = lastGameNumber;
 
-  let allRows = [];
-  const region = "euw";
+  // 2️⃣ Prepare constants
   const season = 25;
   const split = 3;
+  let allRows = [];
+
+  // Normalize helper
+  const normalize = (str) => str.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   for (const player of TEAM) {
-    const summonerName = player.summoner.replace("EUW", "");
+    const summonerName = player.summoner;
     const matches = await fetchOpggMatches(summonerName);
 
     for (const g of matches) {
       const game = g.data;
       if (!game) continue;
 
-      // Only ranked flex (queueId 440)
+      // Only ranked flex
       if (game.queue_info?.queue_translate !== "Ranked Flex 5v5") continue;
 
-      // Collect players in match
-      const teamPlayers = game.participants.map((p) => p.summoner_name.toLowerCase());
-      const teamCount = TEAM.filter((t) =>
-        teamPlayers.includes(t.summoner.toLowerCase().replace("euw", ""))
-      ).length;
+      const participants = game.participants || [];
+      const teamPlayers = participants.map((p) => normalize(p.summoner_name));
 
-      if (teamCount < 5) continue; // skip if fewer than 5 team members
+      // Find which of our players are in the match
+      const matchedPlayers = TEAM.filter((t) =>
+        teamPlayers.includes(normalize(t.summoner))
+      ).map((t) => t.name);
+
+      if (matchedPlayers.length < 5) {
+        console.log(
+          `⏭️ Skipping match ${game.game_id}: only ${matchedPlayers.length} LesNübs found (${matchedPlayers.join(", ")})`
+        );
+        continue;
+      }
 
       const matchId = String(game.game_id);
-      if (existingIds.has(matchId)) continue; // skip duplicates
+      if (existingIds.has(matchId)) {
+        console.log(`🔁 Skipping duplicate match ${matchId}`);
+        continue;
+      }
 
-      const participant = game.participants.find(
-        (p) => p.summoner_name.toLowerCase() === summonerName.toLowerCase()
+      // Increment game number once per match
+      nextGameNumber++;
+      console.log(
+        `✅ Match ${matchId} → Game #${nextGameNumber}: ${matchedPlayers.length} LesNübs detected (${matchedPlayers.join(", ")})`
       );
-      if (!participant) continue;
 
-      const date = new Date(game.created_at).toISOString();
-      const win = game.is_win ? "Win" : "Loss";
-      const k = participant.stats?.kill || 0;
-      const d = participant.stats?.death || 0;
-      const a = participant.stats?.assist || 0;
-      const kp = participant.stats?.contribution_for_kill_rate
-        ? Math.round(participant.stats.contribution_for_kill_rate * 100)
-        : "";
-      const score = participant.stats?.op_score || "";
-      const kda = d === 0 ? (k + a).toFixed(2) : ((k + a) / d).toFixed(2);
-      const duration = `${Math.floor(game.game_length / 60)}m ${game.game_length % 60}s`;
-      const role = participant.position_info?.position || "";
-      const champ = participant.champion_info?.name || "";
-      const cs = participant.stats?.cs || "";
+      // Add one row per participant from our team
+      for (const t of TEAM.filter((tm) => matchedPlayers.includes(tm.name))) {
+        const participant = participants.find(
+          (p) => normalize(p.summoner_name) === normalize(t.summoner)
+        );
+        if (!participant) continue;
 
-      const row = [
-        matchId, // Game #
-        date, // Date
-        "LesNübs", // Team
-        season,
-        split,
-        player.name,
-        win,
-        k,
-        d,
-        a,
-        "", // MVP manual
-        "", // ACE manual
-        kp,
-        score,
-        kda,
-        duration,
-        participant.stats?.vision_ward_buy || "",
-        participant.stats?.ward_placed || "",
-        participant.stats?.ward_kill || "",
-        role,
-        champ,
-        cs,
-      ];
+        const date = new Date(game.created_at).toISOString();
+        const win = game.is_win ? "Win" : "Loss";
+        const k = participant.stats?.kill || 0;
+        const d = participant.stats?.death || 0;
+        const a = participant.stats?.assist || 0;
+        const kp = participant.stats?.contribution_for_kill_rate
+          ? Math.round(participant.stats.contribution_for_kill_rate * 100)
+          : "";
+        const score = participant.stats?.op_score || "";
+        const kda = d === 0 ? (k + a).toFixed(2) : ((k + a) / d).toFixed(2);
+        const duration = `${Math.floor(game.game_length / 60)}m ${game.game_length % 60}s`;
+        const role = participant.position_info?.position || "";
+        const champ = participant.champion_info?.name || "";
+        const cs = participant.stats?.cs || "";
 
-      allRows.push(row);
+        const row = [
+          nextGameNumber, // Game #
+          date,
+          "LesNübs",
+          season,
+          split,
+          t.name,
+          win,
+          k,
+          d,
+          a,
+          "", // MVP manual
+          "", // ACE manual
+          kp,
+          score,
+          kda,
+          duration,
+          participant.stats?.vision_ward_buy || "",
+          participant.stats?.ward_placed || "",
+          participant.stats?.ward_kill || "",
+          role,
+          champ,
+          cs,
+        ];
+
+        allRows.push(row);
+      }
+
       existingIds.add(matchId);
     }
   }
 
-    if (allRows.length === 0) {
+  if (allRows.length === 0) {
     console.log("✅ No new qualifying matches found.");
     return;
   }
 
-  // 🧮 Find the first empty row after existing data
+  // 🧮 Find first empty row
   const currentData = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
     range: `${SHEET_NAME}!A:A`,
   });
   const lastRow = (currentData.data.values?.length || 0) + 1;
-
-  // 3️⃣ Append rows starting after header
   const targetRange = `${SHEET_NAME}!A${lastRow}`;
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: targetRange,
@@ -153,7 +177,7 @@ async function main() {
     requestBody: { values: allRows },
   });
 
-  console.log(`✅ Added ${allRows.length} new matches starting at row ${lastRow}.`);
+  console.log(`✅ Added ${allRows.length} new rows (Games #${nextGameNumber - 1}–${nextGameNumber}).`);
 }
 
 main().catch((e) => console.error("❌ Script failed:", e.message));
