@@ -23,31 +23,37 @@ jobs:
       # --- 🧩 DEBUG: Print OP.GG data for one player using v2 API ---
       - name: Debug OP.GG API output for one player
         run: |
-          echo "Fetching sample data for Amazing Cholo (v2 API)..."
+          echo "Fetching sample data for Amazing Cholo (v2 API, europe region)..."
           cat <<'EOF' > debug-opgg.js
           import axios from "axios";
 
-          const region = "euw";
+          const region = "europe";   // ✅ new valid region for EUW accounts
           const summoner = "Amazing Cholo";
 
           async function run() {
             try {
-              // ✅ New OP.GG v2 API - get summoner info
-              const infoUrl = "https://www.op.gg/api/v2/summoners/" + region + "?summonerName=" + encodeURIComponent(summoner);
-              const infoRes = await axios.get(infoUrl);
+              const headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Accept": "application/json, text/plain, */*",
+                "Referer": "https://www.op.gg/"
+              };
+
+              // 1️⃣ Fetch summoner info
+              const infoUrl = `https://www.op.gg/api/v2/summoners/${region}?summonerName=${encodeURIComponent(summoner)}`;
+              const infoRes = await axios.get(infoUrl, { headers });
               console.log("=== Summoner Info ===");
               console.log(JSON.stringify(infoRes.data, null, 2));
 
-              // Extract summoner ID
+              // 2️⃣ Extract summoner ID
               const summonerId = infoRes.data?.data?.id || infoRes.data?.id;
               if (!summonerId) {
                 console.error("⚠️ Could not find summoner ID for " + summoner);
                 return;
               }
 
-              // ✅ Fetch last 2 games using v2 API
-              const matchesUrl = "https://www.op.gg/api/v2/summoners/" + summonerId + "/games?limit=2&hl=en_US";
-              const matchesRes = await axios.get(matchesUrl);
+              // 3️⃣ Fetch last 2 games
+              const matchesUrl = `https://www.op.gg/api/v2/summoners/${summonerId}/games?limit=2&hl=en_US`;
+              const matchesRes = await axios.get(matchesUrl, { headers });
               console.log("=== Last 2 Games ===");
               console.log(JSON.stringify(matchesRes.data, null, 2));
             } catch (e) {
@@ -59,6 +65,7 @@ jobs:
           EOF
 
           node debug-opgg.js
+
 
       # --- Python setup ---
       - name: Set up Python
