@@ -1,28 +1,35 @@
-name: Test Riot & Google Sheets Connection
+name: Update OP.GG Data to Google Sheets
 
 on:
+  schedule:
+    - cron: "0 9 * * *"  # run every day at 9:00 UTC
   workflow_dispatch:
 
 jobs:
-  test-connection:
+  update:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node dependencies
+        run: npm install
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: "3.11"
 
-      - name: Install dependencies
-        run: |
-          pip install requests gspread google-auth
+      - name: Install Python dependencies
+        run: pip install gspread google-auth
 
-      - name: Run connection test
+      - name: Run OP.GG → Sheets sync
         env:
-          RIOT_API_KEY: ${{ secrets.RIOT_API_KEY }}
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
           SHEET_ID: ${{ secrets.SHEET_ID }}
         run: python riot_to_sheets.py
