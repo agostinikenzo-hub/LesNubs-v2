@@ -1,17 +1,8 @@
-// ✅ Les Nübs Dashboard v2.0.2 + Analytics Desk Extension
-// -------------------------------------------------------
-// Includes:
-// - Stable visual layout (current look)
-// - Guest player support
-// - MVP / ACE Top 3 lists
-// - Analytics Desk (Vision Impact, Top Vision Players, Role Contribution)
-// - Correct KDA + Winrate logic
-// - Role normalization and data cleanup
-
+// ✅ Les Nübs Season 25 Google Sheet (published CSV link)
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?output=csv";
 
-let trendWindow = 10;
+let trendWindow = 10; // Default trend window
 
 // --- Default Player Avatars ---
 const basePlayers = [
@@ -25,7 +16,7 @@ const basePlayers = [
 
 let players = [...basePlayers];
 
-// --- Generate a random pastel color for guest players ---
+// --- Generate a random pastel color ---
 function randomPastelColor() {
   const hue = Math.floor(Math.random() * 360);
   return `hsl(${hue}, 70%, 75%)`;
@@ -92,6 +83,7 @@ function highlightPlayerStats(name, color) {
     el.style.setProperty("--tw-ring-color", color);
   });
 }
+
 // --- LOAD DATA ---
 async function loadData() {
   const status = document.getElementById("status");
@@ -105,7 +97,7 @@ async function loadData() {
     status.textContent = `✅ Loaded ${rows.length} records`;
     status.className = "text-green-600 text-sm mb-4";
 
-    // detect guest players
+    // detect new names not in basePlayers
     const sheetNames = [...new Set(rows.map((r) => r["Player"]?.trim()).filter(Boolean))];
     const knownNames = basePlayers.map((p) => p.name);
     const guestNames = sheetNames.filter((n) => !knownNames.includes(n));
@@ -131,7 +123,6 @@ async function loadData() {
     renderTrends(splits["Season 25"]);
     renderSplits(splits);
     renderCharacterSelect();
-    renderAnalyticsDesk(splits["Season 25"]);
   } catch (err) {
     console.error(err);
     status.textContent = "⚠️ Error loading data. Check Google Sheet access or format.";
@@ -155,9 +146,6 @@ function calcStats(data) {
     const result = (row["Result"] || "").toLowerCase().trim();
     const mvp = (row["MVP"] || "").toLowerCase().trim();
     const ace = (row["ACE"] || "").toLowerCase().trim();
-
-    const played = kills + deaths + assists > 0;
-    if (!played) return;
 
     const win = result === "yes" ? 1 : 0;
     const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
@@ -203,7 +191,7 @@ function calcStats(data) {
   return players;
 }
 
-// --- SEASON SUMMARY ---
+// --- SEASON SUMMARY (full original visual) ---
 function renderSummary(data) {
   const stats = calcStats(data);
   const all = Object.values(stats);
@@ -264,14 +252,18 @@ function renderSummary(data) {
     </div>`;
 }
 
+
 // --- OVERVIEW ---
 function renderOverview(data) {
   const stats = calcStats(data);
+
+  // Limit to main team players only
   const mainTeamNames = basePlayers.map((p) => p.name);
   const filteredStats = Object.fromEntries(
     Object.entries(stats).filter(([name]) => mainTeamNames.includes(name))
   );
 
+  // Count games and wins only if player actually has K/D/A values
   const gamesByPlayer = {};
   const winsByPlayer = {};
 
@@ -290,6 +282,7 @@ function renderOverview(data) {
     const isWin = String(r["Result"]).toLowerCase().trim() === "yes";
     if (isWin) winsByPlayer[name] = (winsByPlayer[name] || 0) + 1;
   });
+
   const sorted = Object.entries(filteredStats)
     .map(([name, s]) => {
       const games = gamesByPlayer[name] || 0;
@@ -477,71 +470,85 @@ function renderSplits(splitsRaw) {
       );
 
       const stats = calcStats(validRows);
-      const sorted = Object.entries(stats)
+
+      // --- Team winrate ---
+      const allGames = [...new Set(data.map((r) => r["Game #"]))];
+      const totalGames = allGames.length;
+      const winningGames = new Set();
+      data.forEach((r) => {
+        if (String(r["Result"]).toLowerCase() === "yes") winningGames.add(r["Game #"]);
+      });
+      const teamWins = winningGames.size;
+      const teamWinrate = totalGames > 0 ? ((teamWins / totalGames) * 100).toFixed(1) : "—";
+
+      // --- Individual winrate / participation ---
+      const playerGameCount = {};
+      const playerWinCount = {};
+      validRows.forEach((r) => {
+        const name = r["Player"]?.trim();
+        if (!name) return;
+        const result = String(r["Result"]).toLowerCase().trim();
+        const isWin = result === "yes";
+        playerGameCount[name] = (playerGameCount[name] || 0) + 1;
+        if (isWin) playerWinCount[name] = (playerWinCount[name] || 0) + 1;
+      });
+
+      const guestNames = players.filter((p) => p.guest).map((p) => p.name);
+
+      // --- Build player stats ---
+      let playerStats = Object.entries(stats)
         .map(([name, s]) => {
+          const games = playerGameCount[name] || 0;
+          const wins = playerWinCount[name] || 0;
+          const winrate = games > 0 ? ((wins / games) * 100).toFixed(1) : "—";
           const avgKDA =
             s.deaths > 0
               ? ((s.kills + s.assists) / s.deaths).toFixed(2)
               : (s.kills + s.assists).toFixed(2);
-          const winrate = s.games ? ((s.wins / s.games) * 100).toFixed(1) : "—";
           const avgKP = s.kpCount ? (s.kpSum / s.kpCount).toFixed(1) : "—";
+          const trend = compareKDA(name, idx);
+
           return {
             name,
+            games,
+            winrate,
             avgKDA,
             kills: s.kills,
             deaths: s.deaths,
             assists: s.assists,
-            winrate,
-            games: s.games,
             mvps: s.mvps,
             aces: s.aces,
             kp: avgKP,
-            trend: compareKDA(name, idx),
+            trend,
+            isGuest: guestNames.includes(name),
           };
         })
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
-      // --- SPLIT SUMMARY ---
-      const allGames = [...new Set(validRows.map((r) => r["Game #"]))];
-      const totalGames = allGames.length;
-      const winningGames = new Set();
-      validRows.forEach((r) => {
-        if (String(r["Result"]).toLowerCase() === "yes") winningGames.add(r["Game #"]);
-      });
-      const wins = winningGames.size;
+      // Split main team and guests
+      const mainPlayers = playerStats.filter((p) => !p.isGuest);
+      const guestPlayers = playerStats.filter((p) => p.isGuest);
+
       const totalKills = validRows.reduce((s, r) => s + (+r["Kills"] || 0), 0);
       const totalDeaths = validRows.reduce((s, r) => s + (+r["Deaths"] || 0), 0);
       const totalAssists = validRows.reduce((s, r) => s + (+r["Assists"] || 0), 0);
-      const avgTeamKDA =
-        totalDeaths > 0 ? ((totalKills + totalAssists) / totalDeaths).toFixed(2) : "—";
-      const winrate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
+      const avgTeamKDA = totalDeaths
+        ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
+        : "—";
 
-      const mvps = validRows.filter(
-        (r) => String(r["MVP"]).toLowerCase() === "yes"
-      );
-      const aces = validRows.filter(
-        (r) => String(r["ACE"]).toLowerCase() === "yes"
-      );
+      const avgKP =
+        validRows.filter((r) => r["Kill Part %"]).reduce(
+          (a, r) => a + (parseFloat(r["Kill Part %"]) || 0),
+          0
+        ) / (validRows.filter((r) => r["Kill Part %"]).length || 1);
 
-      // --- MVP / ACE TOP 3 ---
-      const mvpCount = {};
-      mvps.forEach((r) => {
-        const n = r["Player"]?.trim();
-        if (!n) return;
-        mvpCount[n] = (mvpCount[n] || 0) + 1;
-      });
-      const aceCount = {};
-      aces.forEach((r) => {
-        const n = r["Player"]?.trim();
-        if (!n) return;
-        aceCount[n] = (aceCount[n] || 0) + 1;
-      });
-      const topMVP = Object.entries(mvpCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
-      const topACE = Object.entries(aceCount)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3);
+      const mvps = validRows.filter((r) => String(r["MVP"]).toLowerCase() === "yes").length;
+      const aces = validRows.filter((r) => String(r["ACE"]).toLowerCase() === "yes").length;
+      const totalEntries = validRows.length;
+      const mvpRate = totalEntries ? ((mvps / totalEntries) * 100).toFixed(1) : "—";
+      const aceRate = totalEntries ? ((aces / totalEntries) * 100).toFixed(1) : "—";
+
+      const mostImproved = mainPlayers[0]?.name || "—";
 
       return `
         <div class="bg-white rounded-3xl shadow-xl p-6 flex flex-col space-y-4 border border-slate-100 hover:shadow-2xl transition">
@@ -551,110 +558,110 @@ function renderSplits(splitsRaw) {
           </div>
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
-            <div class="bg-orange-50 p-3 rounded-lg"><p class="text-orange-600 font-semibold text-lg">${totalGames}</p><p class="text-xs text-gray-600 uppercase">Games</p></div>
-            <div class="bg-green-50 p-3 rounded-lg"><p class="text-green-600 font-semibold text-lg">${winrate}%</p><p class="text-xs text-gray-600 uppercase">Winrate</p></div>
-            <div class="bg-indigo-50 p-3 rounded-lg"><p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p><p class="text-xs text-gray-600 uppercase">Team KDA</p></div>
-            <div class="bg-sky-50 p-3 rounded-lg"><p class="text-sky-600 font-semibold text-lg">${validRows.length}</p><p class="text-xs text-gray-600 uppercase">Entries</p></div>
+            <div class="bg-orange-50 p-3 rounded-lg">
+              <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
+              <p class="text-xs text-gray-600 uppercase">Games</p>
+            </div>
+            <div class="bg-green-50 p-3 rounded-lg">
+              <p class="text-green-600 font-semibold text-lg">${teamWinrate}%</p>
+              <p class="text-xs text-gray-600 uppercase">Team Winrate</p>
+            </div>
+            <div class="bg-indigo-50 p-3 rounded-lg">
+              <p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p>
+              <p class="text-xs text-gray-600 uppercase">Team KDA</p>
+            </div>
+            <div class="bg-sky-50 p-3 rounded-lg">
+              <p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p>
+              <p class="text-xs text-gray-600 uppercase">Avg KP</p>
+            </div>
           </div>
 
-          <table class="min-w-full text-sm border-t border-gray-100">
-            <thead class="text-gray-700 font-semibold border-b">
-              <tr><th class="text-left py-1 w-8">#</th><th class="text-left py-1">Player</th><th class="text-right py-1">KDA</th><th class="text-right py-1">Trend</th><th class="text-right py-1">W%</th><th class="text-right py-1">Games</th></tr>
-            </thead>
-            <tbody>
-              ${sorted
-                .map(
-                  (p, i) => `
-                <tr data-player-stat="${p.name}" class="${
-                    i % 2 === 0 ? "bg-gray-50" : "bg-white"
-                  } hover:bg-orange-50 transition">
-                  <td class="py-1">${i + 1}</td>
-                  <td class="py-1 font-medium">${p.name}</td>
-                  <td class="py-1 text-right">${p.avgKDA}</td>
-                  <td class="py-1 text-right">${p.trend}</td>
-                  <td class="py-1 text-right">${p.winrate}%</td>
-                  <td class="py-1 text-right">${p.games}</td>
-                </tr>`
-                )
-                .join("")}
-            </tbody>
-          </table>
-
-          <div class="border-t border-gray-200 pt-2 text-sm text-gray-600 flex flex-wrap justify-between mt-2">
-            <p>🏅 Top MVPs: ${topMVP
-              .map(([n, c]) => `<span class="text-orange-600 font-semibold">${n} (${c})</span>`)
-              .join(", ")}</p>
-            <p>⚡ Top ACEs: ${topACE
-              .map(([n, c]) => `<span class="text-indigo-600 font-semibold">${n} (${c})</span>`)
-              .join(", ")}</p>
+          <div class="mt-2">
+            <table class="min-w-full text-sm border-t border-gray-100">
+              <thead class="text-gray-700 font-semibold border-b">
+                <tr>
+                  <th class="text-left py-1 w-8">#</th>
+                  <th class="text-left py-1">Player</th>
+                  <th class="text-right py-1">KDA</th>
+                  <th class="text-right py-1">Trend</th>
+                  <th class="text-right py-1">W%</th>
+                  <th class="text-right py-1">Games</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${[...mainPlayers, ...guestPlayers]
+                  .map((p, i) => {
+                    const rank = p.isGuest ? "–" : i + 1;
+                    const nameCell = p.isGuest
+                      ? `${p.name} <span class="text-gray-400">⭐</span>`
+                      : p.name;
+                    return `
+                      <tr data-player-stat="${p.name}" class="${
+                        i % 2 === 0 ? "bg-gray-50" : "bg-white"
+                      } hover:bg-orange-50 transition">
+                        <td class="py-1 text-gray-700">${rank}</td>
+                        <td class="py-1 font-medium">${nameCell}</td>
+                        <td class="py-1 text-right">${p.avgKDA}</td>
+                        <td class="py-1 text-right">${p.trend}</td>
+                        <td class="py-1 text-right">${p.winrate}%</td>
+                        <td class="py-1 text-right">${p.games}</td>
+                      </tr>`;
+                  })
+                  .join("")}
+              </tbody>
+            </table>
           </div>
+
+          <!-- Bottom Info Row -->
+<div class="border-t border-gray-200 pt-3 text-sm text-gray-600 flex flex-col gap-1 mt-3">
+
+  <div class="flex flex-wrap justify-between items-center">
+    <p>💥 <span class="font-semibold">Total K/D/A:</span> ${totalKills}/${totalDeaths}/${totalAssists}</p>
+    <p>📈 <span class="font-semibold text-green-600">Most Improved:</span> ${mostImproved}</p>
+  </div>
+
+  <!-- MVPs & ACEs Top 3 -->
+  <div class="flex flex-col sm:flex-row justify-between mt-1 gap-2">
+    <div>
+      <p class="font-semibold text-orange-600 mb-1">🏅 Top 3 MVPs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.mvps - a.mvps)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.mvps})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+
+    <div>
+      <p class="font-semibold text-indigo-600 mb-1">⚡ Top 3 ACEs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.aces - a.aces)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.aces})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+  </div>
+</div>
+
         </div>`;
     })
     .join("");
 }
 
-// --- ANALYTICS DESK ---
-function renderAnalyticsDesk(data) {
-  const container = document.createElement("div");
-  container.className =
-    "bg-white shadow-lg rounded-2xl p-6 text-center mt-6";
-  container.innerHTML = `
-    <h2 class="text-2xl font-bold text-orange-600 mb-4">🧠 The Analytics Desk</h2>
-    <div class="flex justify-center gap-3 mb-4">
-      <button onclick="showMetric('vision')" class="px-3 py-1 rounded-md bg-orange-500 text-white text-sm">Vision Impact</button>
-      <button onclick="showMetric('role')" class="px-3 py-1 rounded-md bg-gray-100 text-gray-700 text-sm">Role Contribution</button>
-    </div>
-    <div id="analytics-content" class="text-gray-700 text-sm">Select a metric above to view insights.</div>
-  `;
-  document.querySelector("main").appendChild(container);
 
-  window.showMetric = (type) => {
-    const c = document.getElementById("analytics-content");
-    if (!c) return;
-
-    if (type === "vision") {
-      const wins = data.filter((r) => r["Result"]?.toLowerCase() === "yes");
-      const losses = data.filter((r) => r["Result"]?.toLowerCase() === "no");
-      const avg = (arr, col) =>
-        arr.reduce((a, r) => a + (parseFloat(r[col]) || 0), 0) /
-        (arr.length || 1);
-      const avgW = avg(wins, "Wards");
-      const avgL = avg(losses, "Wards");
-      const diff = (avgW - avgL).toFixed(1);
-      c.innerHTML = `
-        <p>🕵️ <strong>Vision Impact:</strong></p>
-        <p class="mt-1">Avg wards placed in wins: <b>${avgW.toFixed(1)}</b></p>
-        <p>Avg wards placed in losses: <b>${avgL.toFixed(1)}</b></p>
-        <p class="mt-1 text-sm text-gray-500">Difference: ${diff > 0 ? `+${diff}` : diff}</p>
-      `;
-    } else if (type === "role") {
-      const roleGroups = {};
-      data.forEach((r) => {
-        let role = (r["Role"] || "").trim().toLowerCase();
-        if (!role) return;
-        roleGroups[role] = roleGroups[role] || { games: 0, wards: 0 };
-        if (
-          r["Kills"]?.trim() ||
-          r["Deaths"]?.trim() ||
-          r["Assists"]?.trim()
-        ) {
-          roleGroups[role].games++;
-          roleGroups[role].wards += parseFloat(r["Wards"]) || 0;
-        }
-      });
-      const rows = Object.entries(roleGroups)
-        .map(([role, v]) => {
-          const avg = v.games ? (v.wards / v.games).toFixed(1) : "—";
-          return `<tr><td class="text-left px-2 py-1">${role}</td><td class="text-right px-2 py-1">${avg}</td></tr>`;
-        })
-        .join("");
-      c.innerHTML = `
-        <p>🎯 <strong>Average Wards by Role:</strong></p>
-        <table class="mt-2 mx-auto text-sm border-t border-gray-200">${rows}</table>
-      `;
-    }
-  };
-}
-
-// --- INIT ---
 loadData();
