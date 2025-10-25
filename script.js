@@ -255,6 +255,17 @@ function renderSummary(data) {
 // --- OVERVIEW ---
 function renderOverview(data) {
   const stats = calcStats(data);
+  const playersSet = [...new Set(data.map((r) => r["Player"]?.trim()).filter(Boolean))];
+
+  // Count total games per player by occurrences, even with missing K/D/A
+  const gamesByPlayer = {};
+  playersSet.forEach((name) => (gamesByPlayer[name] = 0));
+  data.forEach((r) => {
+    const name = r["Player"]?.trim();
+    if (!name) return;
+    gamesByPlayer[name] = (gamesByPlayer[name] || 0) + 1;
+  });
+
   const sorted = Object.entries(stats)
     .map(([name, s]) => ({
       name,
@@ -265,8 +276,10 @@ function renderOverview(data) {
         s.deaths > 0
           ? ((s.kills + s.assists) / s.deaths).toFixed(2)
           : (s.kills + s.assists).toFixed(2),
-      games: s.games,
-      winrate: s.games > 0 ? ((s.wins / s.games) * 100).toFixed(1) : "—",
+      games: gamesByPlayer[name] || s.games,
+      winrate: (s.wins > 0 && (gamesByPlayer[name] || s.games) > 0)
+        ? ((s.wins / (gamesByPlayer[name] || s.games)) * 100).toFixed(1)
+        : "—",
       mvps: s.mvps,
       aces: s.aces,
     }))
@@ -308,6 +321,7 @@ function renderOverview(data) {
       </div>
     </div>`;
 }
+
 
 // --- TRENDS ---
 function renderTrends(data) {
