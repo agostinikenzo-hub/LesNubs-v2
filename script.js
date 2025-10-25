@@ -662,9 +662,6 @@ function renderSplits(splitsRaw) {
     })
     .join("");
 }
-// ✅ Les Nübs Season 25 Google Sheet (Published CSV link)
-const SHEET_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?output=csv";
 
 let trendWindow = 10;
 
