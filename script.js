@@ -257,11 +257,17 @@ function renderSummary(data) {
 function renderOverview(data) {
   const stats = calcStats(data);
 
+  // Limit to main team players only
+  const mainTeamNames = basePlayers.map((p) => p.name);
+  const filteredStats = Object.fromEntries(
+    Object.entries(stats).filter(([name]) => mainTeamNames.includes(name))
+  );
+
   // Count games only if player actually has K/D/A values
   const gamesByPlayer = {};
   data.forEach((r) => {
     const name = r["Player"]?.trim();
-    if (!name) return;
+    if (!name || !mainTeamNames.includes(name)) return;
 
     const hasParticipation =
       r["Kills"]?.trim() !== "" ||
@@ -272,7 +278,7 @@ function renderOverview(data) {
     gamesByPlayer[name] = (gamesByPlayer[name] || 0) + 1;
   });
 
-  const sorted = Object.entries(stats)
+  const sorted = Object.entries(filteredStats)
     .map(([name, s]) => ({
       name,
       kills: s.kills,
@@ -282,7 +288,7 @@ function renderOverview(data) {
         s.deaths > 0
           ? ((s.kills + s.assists) / s.deaths).toFixed(2)
           : (s.kills + s.assists).toFixed(2),
-      games: gamesByPlayer[name] || 0, // only count valid rows
+      games: gamesByPlayer[name] || 0,
       winrate:
         (s.wins > 0 && (gamesByPlayer[name] || 0) > 0)
           ? ((s.wins / (gamesByPlayer[name] || 0)) * 100).toFixed(1)
@@ -298,7 +304,7 @@ function renderOverview(data) {
   document.getElementById("season-overview").innerHTML = `
     <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
       <h2 class="text-2xl font-bold text-orange-600 mb-4">🏆 Season 25 Overview</h2>
-      <p class="text-gray-700 mb-4">Top Players by Season-wide KDA</p>
+      <p class="text-gray-700 mb-4">Top Players by Season-wide KDA (Main Team)</p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         ${top
           .map(
@@ -328,6 +334,7 @@ function renderOverview(data) {
       </div>
     </div>`;
 }
+
 
 // --- TRENDS ---
 function renderTrends(data) {
