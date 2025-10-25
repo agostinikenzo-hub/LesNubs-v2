@@ -662,6 +662,373 @@ function renderSplits(splitsRaw) {
     })
     .join("");
 }
+// ✅ Les Nübs Season 25 Google Sheet (Published CSV link)
+const SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?output=csv";
 
+let trendWindow = 10;
 
+// --- Character Select Data ---
+const players = [
+  { name: "Betzhamo", svg: "assets/avatars/betzhamo.svg", color: "#f97316" },
+  { name: "Jansen", svg: "assets/avatars/jansen.svg", color: "#3b82f6" },
+  { name: "Sweeney", svg: "assets/avatars/sweeney.svg", color: "#22c55e" },
+  { name: "denotes", svg: "assets/avatars/ota.svg", color: "#a855f7" },
+  { name: "Burningelf", svg: "assets/avatars/achten.svg", color: "#f59e0b" },
+  { name: "HH", svg: "assets/avatars/hh.svg", color: "#ef4444" },
+];
+
+// --- RENDER CHARACTER SELECTION ---
+function renderCharacterSelect() {
+  const container = document.getElementById("avatars");
+  if (!container) return;
+
+  container.innerHTML = players
+    .map(
+      (p) => `
+      <div class="character cursor-pointer text-center" data-player="${p.name}" data-color="${p.color}">
+        <div class="relative w-20 h-20 mx-auto rounded-full bg-white shadow border border-gray-200 flex items-center justify-center transition-transform hover:scale-105">
+          <img src="${p.svg}" alt="${p.name}" class="w-12 h-12 object-contain" loading="lazy" />
+        </div>
+        <p class="mt-2 text-sm font-semibold text-gray-700">${p.name}</p>
+      </div>`
+    )
+    .join("");
+
+  document.querySelectorAll(".character").forEach((el) => {
+    el.addEventListener("click", () =>
+      selectCharacter(el.dataset.player, el.dataset.color)
+    );
+  });
+}
+
+let selectedPlayer = null;
+let selectedColor = null;
+
+function selectCharacter(name, color) {
+  selectedPlayer = name;
+  selectedColor = color;
+
+  document.querySelectorAll(".character").forEach((el) => {
+    const ring = el.querySelector("div");
+    ring.style.boxShadow = "none";
+    el.querySelector("p").classList.remove("text-orange-500");
+  });
+
+  const el = document.querySelector(`.character[data-player="${name}"]`);
+  if (el) {
+    const ring = el.querySelector("div");
+    ring.style.boxShadow = `0 0 10px 3px ${color}`;
+    el.querySelector("p").classList.add("text-orange-500");
+  }
+
+  highlightPlayerStats(name, color);
+}
+
+function highlightPlayerStats(name, color) {
+  document.querySelectorAll("[data-player-stat]").forEach((el) => {
+    el.style.backgroundColor = "";
+    el.style.boxShadow = "";
+    el.classList.remove("ring-2", "ring-offset-1");
+  });
+
+  document.querySelectorAll(`[data-player-stat="${name}"]`).forEach((el) => {
+    el.style.backgroundColor = `${color}10`;
+    el.style.boxShadow = `0 0 10px ${color}55`;
+    el.classList.add("ring-2", "ring-offset-1");
+    el.style.setProperty("--tw-ring-color", color);
+  });
+}
+
+// --- LOAD DATA ---
+async function loadData() {
+  const status = document.getElementById("status");
+  try {
+    const res = await fetch(SHEET_URL);
+    const csv = await res.text();
+    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+    const rows = parsed.data;
+
+    status.textContent = `Loaded ${rows.length} records ✔`;
+
+    const splits = {
+      "Split 1": [],
+      "Split 2": [],
+      "Split 3": [],
+      "Season 25": [],
+    };
+    rows.forEach((row) => {
+      const split = (row["Split"] || "").trim();
+      if (splits[split]) splits[split].push(row);
+      splits["Season 25"].push(row);
+    });
+
+    renderSummary(splits["Season 25"]);
+    renderOverview(splits["Season 25"]);
+    renderTrends(splits["Season 25"]);
+    renderSplits(splits);
+    renderCharacterSelect();
+    renderAnalyticsDesk(splits["Season 25"]);
+  } catch (err) {
+    console.error(err);
+    status.textContent = "⚠️ Error loading data. Check Google Sheet access or format.";
+  }
+}
+
+// --- CALCULATE PLAYER STATS ---
+function calcStats(data) {
+  const players = {};
+  data.forEach((row) => {
+    const name = row["Player"]?.trim();
+    if (!name) return;
+
+    const kills = parseFloat((row["Kills"] || "").replace(",", ".")) || 0;
+    const deaths = parseFloat((row["Deaths"] || "").replace(",", ".")) || 0;
+    const assists = parseFloat((row["Assists"] || "").replace(",", ".")) || 0;
+    const opgg = parseFloat((row["OP.GG Score"] || "").replace(",", ".")) || null;
+    const kp = parseFloat((row["Kill Part %"] || "").replace(",", ".")) || null;
+
+    const result = (row["Result"] || "").toLowerCase().trim();
+    const mvp = (row["MVP"] || "").toLowerCase().trim();
+    const ace = (row["ACE"] || "").toLowerCase().trim();
+
+    const played = kills + deaths + assists > 0;
+    if (!played) return;
+
+    const win = result === "yes" ? 1 : 0;
+    const kda = deaths === 0 ? kills + assists : (kills + assists) / deaths;
+
+    if (!players[name])
+      players[name] = {
+        kills: 0,
+        deaths: 0,
+        assists: 0,
+        wins: 0,
+        games: 0,
+        mvps: 0,
+        aces: 0,
+        kpSum: 0,
+        kpCount: 0,
+        opggSum: 0,
+        opggCount: 0,
+        gameHistory: [],
+        kpHistory: [],
+        opggHistory: [],
+      };
+
+    players[name].kills += kills;
+    players[name].deaths += deaths;
+    players[name].assists += assists;
+    players[name].wins += win;
+    players[name].games += 1;
+    players[name].mvps += mvp === "yes" ? 1 : 0;
+    players[name].aces += ace === "yes" ? 1 : 0;
+    if (kp) {
+      players[name].kpSum += kp;
+      players[name].kpCount += 1;
+      players[name].kpHistory.push(kp);
+    }
+    if (opgg) {
+      players[name].opggSum += opgg;
+      players[name].opggCount += 1;
+      players[name].opggHistory.push(opgg);
+    }
+    players[name].gameHistory.push(kda);
+  });
+
+  return players;
+}
+
+// --- (Existing renderSummary, renderOverview, renderTrends, renderSplits) ---
+// Keep your original functions here — unchanged from your current working version.
+
+// 🧠 --- THE ANALYTICS DESK ---
+function renderAnalyticsDesk(data) {
+  const container = document.createElement("div");
+  container.className =
+    "bg-white rounded-3xl shadow-xl p-6 mt-6 border border-slate-100 hover:shadow-2xl transition";
+  container.id = "analytics-desk";
+
+  container.innerHTML = `
+    <h2 class="text-2xl font-bold text-orange-600 mb-2">🧠 The Analytics Desk</h2>
+    <p class="text-gray-600 mb-4 text-sm">Explore deeper insights into performance and vision.</p>
+
+    <div class="flex flex-wrap justify-center gap-2 mb-4">
+      <button id="btn-vision-impact" class="px-3 py-1 text-sm rounded-md bg-orange-500 text-white font-medium">🎯 Vision Impact</button>
+      <button id="btn-top-vision" class="px-3 py-1 text-sm rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200">👁️ Top Vision Players</button>
+      <button id="btn-role" class="px-3 py-1 text-sm rounded-md bg-gray-100 text-gray-700 font-medium hover:bg-gray-200">🗺️ Role Contribution</button>
+    </div>
+
+    <div id="analytics-content" class="text-center text-gray-700 text-sm"></div>
+  `;
+
+  document.getElementById("sheet-container").appendChild(container);
+  const contentEl = container.querySelector("#analytics-content");
+
+  const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
+
+  // --- VISION IMPACT ---
+  function showVisionImpact() {
+    const wins = data.filter((r) => String(r["Result"]).toLowerCase() === "yes");
+    const losses = data.filter((r) => String(r["Result"]).toLowerCase() === "no");
+    const parse = (r) => ({
+      pink: +r["Pink"] || 0,
+      wards: +r["Wards"] || 0,
+      killed: +r["Wards Killed"] || 0,
+    });
+
+    const winStats = wins.map(parse);
+    const lossStats = losses.map(parse);
+
+    const winAvg = {
+      pink: avg(winStats.map((x) => x.pink)),
+      wards: avg(winStats.map((x) => x.wards)),
+      killed: avg(winStats.map((x) => x.killed)),
+    };
+    const lossAvg = {
+      pink: avg(lossStats.map((x) => x.pink)),
+      wards: avg(lossStats.map((x) => x.wards)),
+      killed: avg(lossStats.map((x) => x.killed)),
+    };
+
+    contentEl.innerHTML = `
+      <h3 class="text-lg font-semibold text-orange-500 mb-2">🎯 Vision Impact (Wins vs Losses)</h3>
+      <div class="grid grid-cols-3 gap-2 text-center">
+        <div><p class="font-semibold text-green-600">${winAvg.pink.toFixed(1)}</p><p class="text-xs text-gray-500">Pink Wards (Wins)</p></div>
+        <div><p class="font-semibold text-green-600">${winAvg.wards.toFixed(1)}</p><p class="text-xs text-gray-500">Wards Placed (Wins)</p></div>
+        <div><p class="font-semibold text-green-600">${winAvg.killed.toFixed(1)}</p><p class="text-xs text-gray-500">Wards Killed (Wins)</p></div>
+      </div>
+      <div class="grid grid-cols-3 gap-2 text-center mt-2">
+        <div><p class="font-semibold text-red-600">${lossAvg.pink.toFixed(1)}</p><p class="text-xs text-gray-500">Pink Wards (Losses)</p></div>
+        <div><p class="font-semibold text-red-600">${lossAvg.wards.toFixed(1)}</p><p class="text-xs text-gray-500">Wards Placed (Losses)</p></div>
+        <div><p class="font-semibold text-red-600">${lossAvg.killed.toFixed(1)}</p><p class="text-xs text-gray-500">Wards Killed (Losses)</p></div>
+      </div>
+      <p class="mt-3 text-gray-600 italic">In wins, the team averages ${(avg(Object.values(winAvg)) / (avg(Object.values(lossAvg)) || 1) * 100 - 100).toFixed(1)}% more vision activity overall.</p>
+    `;
+  }
+
+  // --- TOP VISION PLAYERS ---
+  function showTopVision() {
+    const players = {};
+    data.forEach((r) => {
+      const name = r["Player"]?.trim();
+      if (!name) return;
+      const pink = +r["Pink"] || 0;
+      const wards = +r["Wards"] || 0;
+      const killed = +r["Wards Killed"] || 0;
+      if (!players[name]) players[name] = { pink: 0, wards: 0, killed: 0, games: 0 };
+      players[name].pink += pink;
+      players[name].wards += wards;
+      players[name].killed += killed;
+      players[name].games++;
+    });
+    const sorted = Object.entries(players)
+      .map(([n, v]) => ({ name: n, score: (v.pink + v.wards + v.killed) / v.games }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    contentEl.innerHTML = `
+      <h3 class="text-lg font-semibold text-orange-500 mb-2">👁️ Top Vision Players</h3>
+      <ul class="list-none text-center">
+        ${sorted
+          .map(
+            (p, i) =>
+              `<li class="py-1">${["🥇", "🥈", "🥉"][i]} ${p.name} — <span class="font-semibold text-gray-800">${p.score.toFixed(
+                1
+              )}</span></li>`
+          )
+          .join("")}
+      </ul>
+    `;
+  }
+
+  // --- ROLE CONTRIBUTION ---
+  function showRole() {
+    const roles = {};
+    const normalizeRole = (raw) => {
+      const r = (raw || "").trim().toLowerCase();
+      if (["supp", "support", "sup"].includes(r)) return "Support";
+      if (["jgl", "jungle"].includes(r)) return "Jungle";
+      if (["mid", "middle"].includes(r)) return "Mid";
+      if (["adc", "bot", "carry"].includes(r)) return "ADC";
+      if (["top", "topp"].includes(r)) return "Top";
+      return "Unknown";
+    };
+
+    data.forEach((r) => {
+      const role = normalizeRole(r["Role"]);
+      if (role === "Unknown") return;
+
+      const pink = +r["Pink"] || 0;
+      const wards = +r["Wards"] || 0;
+      const killed = +r["Wards Killed"] || 0;
+      if (!roles[role]) roles[role] = { pink: 0, wards: 0, killed: 0, games: 0 };
+      roles[role].pink += pink;
+      roles[role].wards += wards;
+      roles[role].killed += killed;
+      roles[role].games++;
+    });
+
+    const arr = Object.entries(roles)
+      .map(([role, v]) => ({
+        role,
+        avg: (v.pink + v.wards + v.killed) / v.games,
+      }))
+      .sort((a, b) => b.avg - a.avg);
+
+    const total = arr.reduce((s, r) => s + r.avg, 0);
+
+    contentEl.innerHTML = `
+      <h3 class="text-lg font-semibold text-orange-500 mb-2">🗺️ Role Contribution</h3>
+      <table class="min-w-full text-sm mx-auto">
+        <thead class="border-b font-semibold text-gray-600">
+          <tr>
+            <th class="text-left py-1 px-2">Role</th>
+            <th class="text-right py-1 px-2">Avg Vision</th>
+            <th class="text-right py-1 px-2">% of Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${arr
+            .map(
+              (r) => `
+            <tr class="border-b">
+              <td class="py-1 px-2">${r.role}</td>
+              <td class="py-1 px-2 text-right">${r.avg.toFixed(1)}</td>
+              <td class="py-1 px-2 text-right">${(
+                (r.avg / total) *
+                100
+              ).toFixed(1)}%</td>
+            </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    `;
+  }
+
+  // --- Button Logic ---
+  const buttons = {
+    "btn-vision-impact": showVisionImpact,
+    "btn-top-vision": showTopVision,
+    "btn-role": showRole,
+  };
+
+  Object.entries(buttons).forEach(([id, fn]) => {
+    document.getElementById(id).addEventListener("click", (e) => {
+      container.querySelectorAll("button").forEach((b) => {
+        b.classList.remove("bg-orange-500", "text-white");
+        b.classList.add("bg-gray-100", "text-gray-700");
+      });
+      e.target.classList.remove("bg-gray-100", "text-gray-700");
+      e.target.classList.add("bg-orange-500", "text-white");
+      fn();
+    });
+  });
+
+  showVisionImpact(); // default view
+}
+
+// --- Initialize everything ---
 loadData();
+
