@@ -463,63 +463,92 @@ function renderSplits(splitsRaw) {
       if (!data.length)
         return `<div class="bg-white p-6 rounded-2xl shadow-md text-gray-400 text-center italic">${split} — No data yet</div>`;
 
-      const stats = calcStats(data);
-      const sorted = Object.entries(stats)
-        .map(([name, s]) => {
-          const avgKDA =
-            s.deaths > 0
-              ? ((s.kills + s.assists) / s.deaths).toFixed(2)
-              : (s.kills + s.assists).toFixed(2);
-          const winrate = s.games ? ((s.wins / s.games) * 100).toFixed(1) : "—";
-          const avgKP = s.kpCount ? (s.kpSum / s.kpCount).toFixed(1) : "—";
-          return {
-            name,
-            avgKDA,
-            kills: s.kills,
-            deaths: s.deaths,
-            assists: s.assists,
-            winrate,
-            games: s.games,
-            mvps: s.mvps,
-            aces: s.aces,
-            kp: avgKP,
-            trend: compareKDA(name, idx),
-          };
-        })
-        .sort((a, b) => b.avgKDA - a.avgKDA);
+      const validRows = data.filter(
+        (r) =>
+          r["Player"]?.trim() &&
+          (r["Kills"]?.trim() || r["Deaths"]?.trim() || r["Assists"]?.trim())
+      );
 
+      const stats = calcStats(validRows);
+
+      // --- Team winrate ---
       const allGames = [...new Set(data.map((r) => r["Game #"]))];
       const totalGames = allGames.length;
       const winningGames = new Set();
       data.forEach((r) => {
-        if (String(r["Result"]).toLowerCase() === "yes")
-          winningGames.add(r["Game #"]);
+        if (String(r["Result"]).toLowerCase() === "yes") winningGames.add(r["Game #"]);
       });
-      const wins = winningGames.size;
+      const teamWins = winningGames.size;
+      const teamWinrate = totalGames > 0 ? ((teamWins / totalGames) * 100).toFixed(1) : "—";
 
-      const totalKills = data.reduce((s, r) => s + (+r["Kills"] || 0), 0);
-      const totalDeaths = data.reduce((s, r) => s + (+r["Deaths"] || 0), 0);
-      const totalAssists = data.reduce((s, r) => s + (+r["Assists"] || 0), 0);
+      // --- Individual winrate / participation ---
+      const playerGameCount = {};
+      const playerWinCount = {};
+      validRows.forEach((r) => {
+        const name = r["Player"]?.trim();
+        if (!name) return;
+        const result = String(r["Result"]).toLowerCase().trim();
+        const isWin = result === "yes";
+        playerGameCount[name] = (playerGameCount[name] || 0) + 1;
+        if (isWin) playerWinCount[name] = (playerWinCount[name] || 0) + 1;
+      });
+
+      const guestNames = players.filter((p) => p.guest).map((p) => p.name);
+
+      // --- Build player stats ---
+      let playerStats = Object.entries(stats)
+        .map(([name, s]) => {
+          const games = playerGameCount[name] || 0;
+          const wins = playerWinCount[name] || 0;
+          const winrate = games > 0 ? ((wins / games) * 100).toFixed(1) : "—";
+          const avgKDA =
+            s.deaths > 0
+              ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+              : (s.kills + s.assists).toFixed(2);
+          const avgKP = s.kpCount ? (s.kpSum / s.kpCount).toFixed(1) : "—";
+          const trend = compareKDA(name, idx);
+
+          return {
+            name,
+            games,
+            winrate,
+            avgKDA,
+            kills: s.kills,
+            deaths: s.deaths,
+            assists: s.assists,
+            mvps: s.mvps,
+            aces: s.aces,
+            kp: avgKP,
+            trend,
+            isGuest: guestNames.includes(name),
+          };
+        })
+        .sort((a, b) => b.avgKDA - a.avgKDA);
+
+      // Split main team and guests
+      const mainPlayers = playerStats.filter((p) => !p.isGuest);
+      const guestPlayers = playerStats.filter((p) => p.isGuest);
+
+      const totalKills = validRows.reduce((s, r) => s + (+r["Kills"] || 0), 0);
+      const totalDeaths = validRows.reduce((s, r) => s + (+r["Deaths"] || 0), 0);
+      const totalAssists = validRows.reduce((s, r) => s + (+r["Assists"] || 0), 0);
       const avgTeamKDA = totalDeaths
         ? ((totalKills + totalAssists) / totalDeaths).toFixed(2)
         : "—";
-      const winrate =
-        totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "—";
 
       const avgKP =
-        data.filter((r) => r["Kill Part %"]).reduce(
+        validRows.filter((r) => r["Kill Part %"]).reduce(
           (a, r) => a + (parseFloat(r["Kill Part %"]) || 0),
           0
-        ) /
-        (data.filter((r) => r["Kill Part %"]).length || 1);
+        ) / (validRows.filter((r) => r["Kill Part %"]).length || 1);
 
-      const totalEntries = data.length;
-      const mvps = data.filter((r) => String(r["MVP"]).toLowerCase() === "yes").length;
-      const aces = data.filter((r) => String(r["ACE"]).toLowerCase() === "yes").length;
-      const mvpRate = ((mvps / totalEntries) * 100).toFixed(1);
-      const aceRate = ((aces / totalEntries) * 100).toFixed(1);
+      const mvps = validRows.filter((r) => String(r["MVP"]).toLowerCase() === "yes").length;
+      const aces = validRows.filter((r) => String(r["ACE"]).toLowerCase() === "yes").length;
+      const totalEntries = validRows.length;
+      const mvpRate = totalEntries ? ((mvps / totalEntries) * 100).toFixed(1) : "—";
+      const aceRate = totalEntries ? ((aces / totalEntries) * 100).toFixed(1) : "—";
 
-      const mostImproved = sorted[0]?.name || "—";
+      const mostImproved = mainPlayers[0]?.name || "—";
 
       return `
         <div class="bg-white rounded-3xl shadow-xl p-6 flex flex-col space-y-4 border border-slate-100 hover:shadow-2xl transition">
@@ -527,12 +556,26 @@ function renderSplits(splitsRaw) {
             <h3 class="text-2xl font-bold text-orange-500">${split}</h3>
             <p class="text-sm text-gray-500">Team Summary</p>
           </div>
+
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
-            <div class="bg-orange-50 p-3 rounded-lg"><p class="text-orange-600 font-semibold text-lg">${totalGames}</p><p class="text-xs text-gray-600 uppercase">Games</p></div>
-            <div class="bg-green-50 p-3 rounded-lg"><p class="text-green-600 font-semibold text-lg">${winrate}%</p><p class="text-xs text-gray-600 uppercase">Winrate</p></div>
-            <div class="bg-indigo-50 p-3 rounded-lg"><p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p><p class="text-xs text-gray-600 uppercase">Team KDA</p></div>
-            <div class="bg-sky-50 p-3 rounded-lg"><p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p><p class="text-xs text-gray-600 uppercase">Avg KP</p></div>
+            <div class="bg-orange-50 p-3 rounded-lg">
+              <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
+              <p class="text-xs text-gray-600 uppercase">Games</p>
+            </div>
+            <div class="bg-green-50 p-3 rounded-lg">
+              <p class="text-green-600 font-semibold text-lg">${teamWinrate}%</p>
+              <p class="text-xs text-gray-600 uppercase">Team Winrate</p>
+            </div>
+            <div class="bg-indigo-50 p-3 rounded-lg">
+              <p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p>
+              <p class="text-xs text-gray-600 uppercase">Team KDA</p>
+            </div>
+            <div class="bg-sky-50 p-3 rounded-lg">
+              <p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p>
+              <p class="text-xs text-gray-600 uppercase">Avg KP</p>
+            </div>
           </div>
+
           <div class="mt-2">
             <table class="min-w-full text-sm border-t border-gray-100">
               <thead class="text-gray-700 font-semibold border-b">
@@ -546,22 +589,29 @@ function renderSplits(splitsRaw) {
                 </tr>
               </thead>
               <tbody>
-                ${sorted
-                  .map(
-                    (p, i) => `
-                    <tr data-player-stat="${p.name}" class="${i % 2 === 0 ? "bg-gray-50" : "bg-white"} hover:bg-orange-50 transition">
-                      <td class="py-1">${i + 1}</td>
-                      <td class="py-1 font-medium">${p.name}</td>
-                      <td class="py-1 text-right">${p.avgKDA}</td>
-                      <td class="py-1 text-right">${p.trend}</td>
-                      <td class="py-1 text-right">${p.winrate}%</td>
-                      <td class="py-1 text-right">${p.games}</td>
-                    </tr>`
-                  )
+                ${[...mainPlayers, ...guestPlayers]
+                  .map((p, i) => {
+                    const rank = p.isGuest ? "–" : i + 1;
+                    const nameCell = p.isGuest
+                      ? `${p.name} <span class="text-gray-400">⭐</span>`
+                      : p.name;
+                    return `
+                      <tr data-player-stat="${p.name}" class="${
+                        i % 2 === 0 ? "bg-gray-50" : "bg-white"
+                      } hover:bg-orange-50 transition">
+                        <td class="py-1 text-gray-700">${rank}</td>
+                        <td class="py-1 font-medium">${nameCell}</td>
+                        <td class="py-1 text-right">${p.avgKDA}</td>
+                        <td class="py-1 text-right">${p.trend}</td>
+                        <td class="py-1 text-right">${p.winrate}%</td>
+                        <td class="py-1 text-right">${p.games}</td>
+                      </tr>`;
+                  })
                   .join("")}
               </tbody>
             </table>
           </div>
+
           <div class="border-t border-gray-200 pt-2 text-sm text-gray-600 flex flex-wrap justify-between mt-2">
             <p>🏅 MVP Rate: <span class="text-orange-600 font-semibold">${mvpRate}%</span></p>
             <p>⚡ ACE Rate: <span class="text-indigo-600 font-semibold">${aceRate}%</span></p>
@@ -572,5 +622,6 @@ function renderSplits(splitsRaw) {
     })
     .join("");
 }
+
 
 loadData();
