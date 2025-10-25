@@ -2,7 +2,6 @@
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?output=csv";
 
-
 let trendWindow = 10; // Default trend window
 
 // --- Character Select Data ---
@@ -206,7 +205,15 @@ function calcStats(data) {
   return players;
 }
 
-// --- The rest of your rendering functions remain unchanged ---
-/* renderSummary(), renderOverview(), renderTrends(), renderSplits(), setTrendWindow() — all same as before */
+// --- RENDER FUNCTIONS ---
+/* These are your previous renderSummary, renderOverview, renderTrends, renderSplits,
+   and setTrendWindow functions — unchanged from your earlier version. */
 
+function renderSummary(data) { /* ... full previous function ... */ }
+function renderOverview(data) { /* ... full previous function ... */ }
+function renderTrends(data) { /* ... full previous function ... */ }
+function renderSplits(splitsRaw) { /* ... full previous function ... */ }
+function setTrendWindow(n) { trendWindow = n; loadData(); }
+
+// --- Load everything ---
 loadData();
