@@ -525,6 +525,7 @@ function renderSplits(splitsRaw) {
         })
         .sort((a, b) => b.avgKDA - a.avgKDA);
 
+      // Split main team and guests
       const mainPlayers = playerStats.filter((p) => !p.isGuest);
       const guestPlayers = playerStats.filter((p) => p.isGuest);
 
@@ -550,113 +551,117 @@ function renderSplits(splitsRaw) {
       const mostImproved = mainPlayers[0]?.name || "—";
 
       return `
-        <div class="bg-white rounded-3xl shadow-xl p-6 flex flex-col justify-between h-full min-h-[600px] space-y-4 border border-slate-100 hover:shadow-2xl transition">
-          <div>
-            <div class="flex flex-wrap justify-between items-center mb-2">
-              <h3 class="text-2xl font-bold text-orange-500">${split}</h3>
-              <p class="text-sm text-gray-500">Team Summary</p>
-            </div>
+        <div class="bg-white rounded-3xl shadow-xl p-6 flex flex-col space-y-4 border border-slate-100 hover:shadow-2xl transition">
+          <div class="flex flex-wrap justify-between items-center mb-2">
+            <h3 class="text-2xl font-bold text-orange-500">${split}</h3>
+            <p class="text-sm text-gray-500">Team Summary</p>
+          </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
-              <div class="bg-orange-50 p-3 rounded-lg">
-                <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
-                <p class="text-xs text-gray-600 uppercase">Games</p>
-              </div>
-              <div class="bg-green-50 p-3 rounded-lg">
-                <p class="text-green-600 font-semibold text-lg">${teamWinrate}%</p>
-                <p class="text-xs text-gray-600 uppercase">Team Winrate</p>
-              </div>
-              <div class="bg-indigo-50 p-3 rounded-lg">
-                <p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p>
-                <p class="text-xs text-gray-600 uppercase">Team KDA</p>
-              </div>
-              <div class="bg-sky-50 p-3 rounded-lg">
-                <p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p>
-                <p class="text-xs text-gray-600 uppercase">Avg KP</p>
-              </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center mb-2">
+            <div class="bg-orange-50 p-3 rounded-lg">
+              <p class="text-orange-600 font-semibold text-lg">${totalGames}</p>
+              <p class="text-xs text-gray-600 uppercase">Games</p>
             </div>
-
-            <div class="mt-2">
-              <table class="min-w-full text-sm border-t border-gray-100">
-                <thead class="text-gray-700 font-semibold border-b">
-                  <tr>
-                    <th class="text-left py-1 w-8">#</th>
-                    <th class="text-left py-1">Player</th>
-                    <th class="text-right py-1">KDA</th>
-                    <th class="text-right py-1">Trend</th>
-                    <th class="text-right py-1">W%</th>
-                    <th class="text-right py-1">Games</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${[...mainPlayers, ...guestPlayers]
-                    .map((p, i) => {
-                      const rank = p.isGuest ? "–" : i + 1;
-                      const nameCell = p.isGuest
-                        ? `${p.name} <span class="text-gray-400">⭐</span>`
-                        : p.name;
-                      return `
-                        <tr data-player-stat="${p.name}" class="${
-                          i % 2 === 0 ? "bg-gray-50" : "bg-white"
-                        } hover:bg-orange-50 transition">
-                          <td class="py-1 text-gray-700">${rank}</td>
-                          <td class="py-1 font-medium">${nameCell}</td>
-                          <td class="py-1 text-right">${p.avgKDA}</td>
-                          <td class="py-1 text-right">${p.trend}</td>
-                          <td class="py-1 text-right">${p.winrate}%</td>
-                          <td class="py-1 text-right">${p.games}</td>
-                        </tr>`;
-                    })
-                    .join("")}
-                </tbody>
-              </table>
+            <div class="bg-green-50 p-3 rounded-lg">
+              <p class="text-green-600 font-semibold text-lg">${teamWinrate}%</p>
+              <p class="text-xs text-gray-600 uppercase">Team Winrate</p>
+            </div>
+            <div class="bg-indigo-50 p-3 rounded-lg">
+              <p class="text-indigo-600 font-semibold text-lg">${avgTeamKDA}</p>
+              <p class="text-xs text-gray-600 uppercase">Team KDA</p>
+            </div>
+            <div class="bg-sky-50 p-3 rounded-lg">
+              <p class="text-sky-600 font-semibold text-lg">${avgKP.toFixed(1)}%</p>
+              <p class="text-xs text-gray-600 uppercase">Avg KP</p>
             </div>
           </div>
 
-          <!-- Bottom Stats (Uniform Height) -->
-          <div class="border-t border-gray-200 pt-3 text-sm text-gray-600 flex flex-col gap-1 mt-3">
-            <div class="flex flex-wrap justify-between items-center">
-              <p>💥 <span class="font-semibold">Total K/D/A:</span> ${totalKills}/${totalDeaths}/${totalAssists}</p>
-              <p>📈 <span class="font-semibold text-green-600">Most Improved:</span> ${mostImproved}</p>
-            </div>
-
-            <div class="flex flex-col sm:flex-row justify-between mt-1 gap-2">
-              <div>
-                <p class="font-semibold text-orange-600 mb-1">🏅 Top 3 MVPs</p>
-                <ul class="text-gray-700 list-none pl-0">
-                  ${playerStats
-                    .sort((a, b) => b.mvps - a.mvps)
-                    .slice(0, 3)
-                    .map(
-                      (p, i) => `
-                      <li>
-                        <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
-                        ${p.name} <span class="text-gray-500">(${p.mvps})</span>
-                      </li>`
-                    )
-                    .join("")}
-                </ul>
-              </div>
-
-              <div>
-                <p class="font-semibold text-indigo-600 mb-1">⚡ Top 3 ACEs</p>
-                <ul class="text-gray-700 list-none pl-0">
-                  ${playerStats
-                    .sort((a, b) => b.aces - a.aces)
-                    .slice(0, 3)
-                    .map(
-                      (p, i) => `
-                      <li>
-                        <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
-                        ${p.name} <span class="text-gray-500">(${p.aces})</span>
-                      </li>`
-                    )
-                    .join("")}
-                </ul>
-              </div>
-            </div>
+          <div class="mt-2">
+            <table class="min-w-full text-sm border-t border-gray-100">
+              <thead class="text-gray-700 font-semibold border-b">
+                <tr>
+                  <th class="text-left py-1 w-8">#</th>
+                  <th class="text-left py-1">Player</th>
+                  <th class="text-right py-1">KDA</th>
+                  <th class="text-right py-1">Trend</th>
+                  <th class="text-right py-1">W%</th>
+                  <th class="text-right py-1">Games</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${[...mainPlayers, ...guestPlayers]
+                  .map((p, i) => {
+                    const rank = p.isGuest ? "–" : i + 1;
+                    const nameCell = p.isGuest
+                      ? `${p.name} <span class="text-gray-400">⭐</span>`
+                      : p.name;
+                    return `
+                      <tr data-player-stat="${p.name}" class="${
+                        i % 2 === 0 ? "bg-gray-50" : "bg-white"
+                      } hover:bg-orange-50 transition">
+                        <td class="py-1 text-gray-700">${rank}</td>
+                        <td class="py-1 font-medium">${nameCell}</td>
+                        <td class="py-1 text-right">${p.avgKDA}</td>
+                        <td class="py-1 text-right">${p.trend}</td>
+                        <td class="py-1 text-right">${p.winrate}%</td>
+                        <td class="py-1 text-right">${p.games}</td>
+                      </tr>`;
+                  })
+                  .join("")}
+              </tbody>
+            </table>
           </div>
+
+          <!-- Bottom Info Row -->
+<div class="border-t border-gray-200 pt-3 text-sm text-gray-600 flex flex-col gap-1 mt-3">
+
+  <div class="flex flex-wrap justify-between items-center">
+    <p>💥 <span class="font-semibold">Total K/D/A:</span> ${totalKills}/${totalDeaths}/${totalAssists}</p>
+    <p>📈 <span class="font-semibold text-green-600">Most Improved:</span> ${mostImproved}</p>
+  </div>
+
+  <!-- MVPs & ACEs Top 3 -->
+  <div class="flex flex-col sm:flex-row justify-between mt-1 gap-2">
+    <div>
+      <p class="font-semibold text-orange-600 mb-1">🏅 Top 3 MVPs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.mvps - a.mvps)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.mvps})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+
+    <div>
+      <p class="font-semibold text-indigo-600 mb-1">⚡ Top 3 ACEs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.aces - a.aces)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.aces})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+  </div>
+</div>
+
         </div>`;
     })
     .join("");
 }
+
+
+loadData();
