@@ -612,12 +612,52 @@ function renderSplits(splitsRaw) {
             </table>
           </div>
 
-          <div class="border-t border-gray-200 pt-2 text-sm text-gray-600 flex flex-wrap justify-between mt-2">
-            <p>🏅 MVP Rate: <span class="text-orange-600 font-semibold">${mvpRate}%</span></p>
-            <p>⚡ ACE Rate: <span class="text-indigo-600 font-semibold">${aceRate}%</span></p>
-            <p>💥 Total K/D/A: <span class="font-semibold">${totalKills}/${totalDeaths}/${totalAssists}</span></p>
-            <p>📈 Most improved: <span class="font-semibold text-green-600">${mostImproved}</span></p>
-          </div>
+          <!-- Bottom Info Row -->
+<div class="border-t border-gray-200 pt-3 text-sm text-gray-600 flex flex-col gap-1 mt-3">
+
+  <div class="flex flex-wrap justify-between items-center">
+    <p>💥 <span class="font-semibold">Total K/D/A:</span> ${totalKills}/${totalDeaths}/${totalAssists}</p>
+    <p>📈 <span class="font-semibold text-green-600">Most Improved:</span> ${mostImproved}</p>
+  </div>
+
+  <!-- MVPs & ACEs Top 3 -->
+  <div class="flex flex-col sm:flex-row justify-between mt-1 gap-2">
+    <div>
+      <p class="font-semibold text-orange-600 mb-1">🏅 Top 3 MVPs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.mvps - a.mvps)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.mvps})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+
+    <div>
+      <p class="font-semibold text-indigo-600 mb-1">⚡ Top 3 ACEs</p>
+      <ul class="text-gray-700 list-none pl-0">
+        ${playerStats
+          .sort((a, b) => b.aces - a.aces)
+          .slice(0, 3)
+          .map(
+            (p, i) => `
+            <li>
+              <span class="mr-1 text-sm">${["🥇", "🥈", "🥉"][i] || "•"}</span>
+              ${p.name} <span class="text-gray-500">(${p.aces})</span>
+            </li>`
+          )
+          .join("")}
+      </ul>
+    </div>
+  </div>
+</div>
+
         </div>`;
     })
     .join("");
