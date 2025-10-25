@@ -1,6 +1,6 @@
-// ✅ Les Nübs Season 25 Google Sheet
+// ✅ Les Nübs Season 25 Google Sheet (use the published CSV link!)
 const SHEET_URL =
-  "https://docs.google.com/spreadsheets/d/15d-e7-S8A5p_uhAcHMaU2dCZc-csmZ7GJK9sd0iay8U/gviz/tq?tqx=out:csv";
+  "https://docs.google.com/spreadsheets/d/e/15d-e7-S8A5p_uhAcHMaU2dCZc-csmZ7GJK9sd0iay8U/pub?output=csv";
 
 let trendWindow = 10; // Default trend window
 
@@ -95,11 +95,13 @@ async function loadData() {
   const status = document.getElementById("status");
   try {
     const res = await fetch(SHEET_URL);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const csv = await res.text();
     const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
     const rows = parsed.data;
 
-    status.textContent = `Loaded ${rows.length} records ✔`;
+    status.textContent = `✅ Loaded ${rows.length} records`;
+    status.className = "text-green-600 text-sm mb-4";
 
     // Detect guest players
     const sheetNames = [...new Set(rows.map((r) => r["Player"]?.trim()).filter(Boolean))];
@@ -134,8 +136,8 @@ async function loadData() {
     renderCharacterSelect();
   } catch (err) {
     console.error(err);
-    status.textContent =
-      "⚠️ Error loading data. Check Google Sheet access or format.";
+    status.textContent = "⚠️ Error loading data. Check Google Sheet access or format.";
+    status.className = "text-red-600 text-sm mb-4";
   }
 }
 
