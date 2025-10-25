@@ -263,8 +263,10 @@ function renderOverview(data) {
     Object.entries(stats).filter(([name]) => mainTeamNames.includes(name))
   );
 
-  // Count games only if player actually has K/D/A values
+  // Count games and wins only if player actually has K/D/A values
   const gamesByPlayer = {};
+  const winsByPlayer = {};
+
   data.forEach((r) => {
     const name = r["Player"]?.trim();
     if (!name || !mainTeamNames.includes(name)) return;
@@ -275,27 +277,33 @@ function renderOverview(data) {
       r["Assists"]?.trim() !== "";
 
     if (!hasParticipation) return;
+
     gamesByPlayer[name] = (gamesByPlayer[name] || 0) + 1;
+    const isWin = String(r["Result"]).toLowerCase().trim() === "yes";
+    if (isWin) winsByPlayer[name] = (winsByPlayer[name] || 0) + 1;
   });
 
   const sorted = Object.entries(filteredStats)
-    .map(([name, s]) => ({
-      name,
-      kills: s.kills,
-      deaths: s.deaths,
-      assists: s.assists,
-      avgKDA:
-        s.deaths > 0
-          ? ((s.kills + s.assists) / s.deaths).toFixed(2)
-          : (s.kills + s.assists).toFixed(2),
-      games: gamesByPlayer[name] || 0,
-      winrate:
-        (s.wins > 0 && (gamesByPlayer[name] || 0) > 0)
-          ? ((s.wins / (gamesByPlayer[name] || 0)) * 100).toFixed(1)
-          : "—",
-      mvps: s.mvps,
-      aces: s.aces,
-    }))
+    .map(([name, s]) => {
+      const games = gamesByPlayer[name] || 0;
+      const wins = winsByPlayer[name] || 0;
+      const winrate = games > 0 ? Math.min((wins / games) * 100, 100).toFixed(1) : "—";
+
+      return {
+        name,
+        kills: s.kills,
+        deaths: s.deaths,
+        assists: s.assists,
+        avgKDA:
+          s.deaths > 0
+            ? ((s.kills + s.assists) / s.deaths).toFixed(2)
+            : (s.kills + s.assists).toFixed(2),
+        games,
+        winrate,
+        mvps: s.mvps,
+        aces: s.aces,
+      };
+    })
     .sort((a, b) => b.avgKDA - a.avgKDA);
 
   const top = sorted.slice(0, 3);
@@ -334,7 +342,6 @@ function renderOverview(data) {
       </div>
     </div>`;
 }
-
 
 // --- TRENDS ---
 function renderTrends(data) {
