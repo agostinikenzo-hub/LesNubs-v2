@@ -1,0 +1,151 @@
+<body class="fade-bg min-h-screen flex flex-col items-center p-6 text-gray-800">
+
+  <!-- Back Button -->
+  <a href="index.html"
+     class="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-full shadow-md hover:bg-orange-600 transition-all duration-200 fixed top-5 left-5 z-50">
+    ← Back to Dashboard
+  </a>
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Les Nübs — Data Reference</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Custom Styles -->
+    <style>
+      .fade-bg {
+        background: linear-gradient(135deg, #fffaf5, #eef2ff);
+      }
+      body {
+        font-family: system-ui, sans-serif;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th, td {
+        border-bottom: 1px solid #eee;
+        padding: 8px 12px;
+        text-align: left;
+      }
+      th {
+        background-color: #fff7ed;
+        color: #c2410c;
+      }
+    </style>
+  </head>
+
+  <main class="max-w-5xl w-full space-y-8">
+
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h1 class="text-2xl font-bold text-orange-600 mb-4">Les Nübs — CSV Data Reference</h1>
+      <p class="text-gray-600 mb-2">
+        Overview of all columns currently exported from <code>fetch_riot_data.py</code> and their meaning in the League of Legends context.
+      </p>
+    </section>
+
+    <!-- Metadata -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">1️⃣ Metadata & Game Info</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Game #</td><td>Internal counter for unique matches recorded.</td></tr>
+        <tr><td>Date</td><td>Match start time in UTC.</td></tr>
+        <tr><td>Team</td><td>Constant “Les Nübs”. Identifies your team.</td></tr>
+        <tr><td>Season</td><td>Competitive season (e.g., 2025).</td></tr>
+        <tr><td>Split</td><td>Event or internal split name (e.g., Fall Split).</td></tr>
+        <tr><td>Match ID</td><td>Unique Riot match identifier (for traceability).</td></tr>
+        <tr><td>Queue Type</td><td>Riot queue ID (e.g., 440 = Ranked Flex).</td></tr>
+        <tr><td>Game Mode</td><td>Game mode such as CLASSIC, ARAM, URF.</td></tr>
+        <tr><td>Map ID</td><td>Map code (11 = Summoner’s Rift).</td></tr>
+        <tr><td>Game Version</td><td>Patch version (e.g., 14.19).</td></tr>
+        <tr><td>Winning Team</td><td>100 = Blue side win, 200 = Red side win.</td></tr>
+      </table>
+    </section>
+
+    <!-- Player Identity -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">2️⃣ Player Identity & Role</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Player</td><td>Riot ID of the player in this match.</td></tr>
+        <tr><td>ROLE</td><td>Team position (TOP, JUNGLE, MIDDLE, ADC, SUPPORT).</td></tr>
+        <tr><td>Champion</td><td>Champion played by the player.</td></tr>
+        <tr><td>Champion Level</td><td>Final champion level at match end.</td></tr>
+        <tr><td>Summoner Spell 1 / 2</td><td>IDs of the two summoner spells used.</td></tr>
+      </table>
+    </section>
+
+    <!-- Performance -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">3️⃣ Match Result & Performance</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Result</td><td>Win or Loss for the player’s team.</td></tr>
+        <tr><td>Kills / Deaths / Assists</td><td>Core combat stats.</td></tr>
+        <tr><td>KDA</td><td>Kill–Death–Assist ratio (to be computed later).</td></tr>
+        <tr><td>Kill Part %</td><td>Kill participation relative to team kills.</td></tr>
+        <tr><td>MVP / ACE / OP.GG Score</td><td>Placeholders for custom metrics.</td></tr>
+        <tr><td>TIME</td><td>Match duration (minutes).</td></tr>
+        <tr><td>Gold Earned / Spent</td><td>Total gold earned and used.</td></tr>
+        <tr><td>XP/min</td><td>Average experience per minute.</td></tr>
+        <tr><td>XP Diff @10</td><td>XP difference at 10 minutes vs. lane opponent.</td></tr>
+        <tr><td>CS / CS/min</td><td>Minions + neutral monsters killed, and per minute rate.</td></tr>
+        <tr><td>CS Diff @10</td><td>CS difference vs. lane opponent at 10 minutes.</td></tr>
+      </table>
+    </section>
+
+    <!-- Vision -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">4️⃣ Vision & Map Control</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Vision Score</td><td>Overall vision impact metric from Riot.</td></tr>
+        <tr><td>WARDS</td><td>Total wards placed.</td></tr>
+        <tr><td>WARDS KILLED</td><td>Enemy wards destroyed.</td></tr>
+        <tr><td>PINK</td><td>Control (pink) wards purchased.</td></tr>
+        <tr><td>Crowd Control Time Dealt</td><td>Total seconds spent applying CC.</td></tr>
+        <tr><td>CC Score</td><td>Duplicate metric from Riot’s challenges data.</td></tr>
+      </table>
+    </section>
+
+    <!-- Damage -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">5️⃣ Damage & Fighting Stats</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>Damage Dealt</td><td>Total damage dealt to enemy champions.</td></tr>
+        <tr><td>Damage Taken</td><td>Total damage received from enemies.</td></tr>
+        <tr><td>Damage to Objectives</td><td>Damage to dragons, barons, heralds.</td></tr>
+        <tr><td>Damage to Turrets</td><td>Damage dealt to structures.</td></tr>
+        <tr><td>Team Damage %</td><td>Share of total team damage to champions.</td></tr>
+        <tr><td>Total Heal</td><td>Total HP restored by healing effects.</td></tr>
+        <tr><td>Total Shield</td><td>Amount of shielding applied to allies.</td></tr>
+        <tr><td>Solo / Double / Triple / Quadra / Penta Kills</td><td>Multi-kill and solo-kill stats.</td></tr>
+        <tr><td>Damage Timeline</td><td>Placeholder for future timeline integration.</td></tr>
+      </table>
+    </section>
+
+    <!-- Objectives -->
+    <section class="bg-white p-6 rounded-2xl shadow">
+      <h2 class="text-xl font-bold text-orange-600 mb-2">6️⃣ Team Objective Stats</h2>
+      <table>
+        <tr><th>Column</th><th>Meaning</th></tr>
+        <tr><td>First Blood</td><td>Whether the team secured the game’s first kill.</td></tr>
+        <tr><td>First Tower</td><td>Whether the team destroyed the first turret.</td></tr>
+        <tr><td>First Baron</td><td>Whether the team killed the first Baron Nashor.</td></tr>
+        <tr><td>First Dragon</td><td>Whether the team took the first dragon.</td></tr>
+        <tr><td>Dragon / Baron / Herald Kills</td><td>Total number of these objectives secured.</td></tr>
+        <tr><td>Tower / Inhibitor Kills</td><td>Total structures destroyed by the team.</td></tr>
+      </table>
+    </section>
+
+    <footer class="mt-8 text-gray-500 text-sm">
+      Built with love, and too much time, so our Team may never not play games — LeBlenzo © 2025
+    </footer>
+
+  </main>
+</body>
