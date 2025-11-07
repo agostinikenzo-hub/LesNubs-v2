@@ -1,0 +1,6 @@
+scripts/.env
+# Local data pipeline (do not publish)
+scripts/
+*.csv
+*.json
+.env
