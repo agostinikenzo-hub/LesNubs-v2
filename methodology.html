@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Les Nübs — Calculation Methodology</title>
+
+    <!-- Fonts & Tailwind (match main dashboard) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+  </head>
+
+  <body class="fade-bg min-h-screen flex flex-col text-gray-800">
+    <!-- =======================================
+         HEADER / SHELL
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <!-- Brand -->
+        <div class="flex items-center gap-2">
+          <div
+            class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">
+              Les Nübs — Season 25
+            </span>
+            <span class="text-[0.65rem] text-slate-500">
+              Calculation &amp; Scoring Methodology
+            </span>
+          </div>
+        </div>
+
+        <!-- Right actions -->
+        <div class="flex items-center gap-2">
+          <a
+            href="metrics.html"
+            class="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[0.65rem] border border-slate-200 text-slate-600 hover:text-orange-500 hover:border-orange-400 transition"
+          >
+            Metric Glossary
+          </a>
+          <a
+            href="index.html"
+            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
+                   bg-orange-500 text-white shadow-sm hover:bg-orange-600 hover:shadow-md
+                   transition-all duration-200"
+          >
+            ← Back to Dashboard
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
+          How the Dashboard Calculates Your Story
+        </h1>
+        <p class="text-xs sm:text-sm text-gray-600 max-w-3xl">
+          This page documents the exact logic behind the live dashboard:
+          how we read the sheet, how we detect guests, how we build
+          Season Summary, Total Player Impact, Team Synergy, and Split Snapshots.
+        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-1 italic">
+          If something feels off, you can point at a formula here and bully it into improvement.
+        </p>
+      </div>
+    </section>
+
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    
+    
+    
+    
+    
+    <main class="w-full flex-1">
+      <div class="max-w-6xl mx-auto px-4 pb-10">
+        <!-- Filter Tabs -->
+        <section class="section-wrapper mb-4">
+          <div class="dashboard-card flex flex-col gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-[1.05rem] font-semibold text-orange-500">
+                  Browse by System
+                </h2>
+                <p class="text-[0.7rem] text-gray-600 max-w-xl">
+                  Click a topic to see how that part of the dashboard is calculated.
+                  All formulas below are derived directly from the live <code>script.js</code>.
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-1.5 text-[0.65rem]">
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-orange-500 bg-orange-500 text-white font-medium shadow-sm"
+                  data-topic="all"
+                >
+                  All Sections
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="data"
+                >
+                  Data &amp; Guests
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="summary"
+                >
+                  Season Summary
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="tpi"
+                >
+                  Total Player Impact
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="aow"
+                >
+                  Objective Weights (AOW)
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="synergy"
+                >
+                  Team Synergy &amp; Identity
+                </button>
+                <button
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="splits"
+                >
+                  Split Snapshots
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Cards Grid -->
+        <section class="section-wrapper">
+          <div id="calc-grid" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <!-- JS injects cards -->
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- =======================================
+         FOOTER
+    ======================================== -->
+    <footer class="w-full border-t border-slate-200">
+      <div
+        class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500"
+      >
+        Transparent by design — if a score looks cursed, you know exactly why. Les Nübs · 2025
+      </div>
+    </footer>
+
+    <!-- =======================================
+         DATA (from script.js) & RENDER LOGIC
+    ======================================== -->
+    <script>
+      // Helper label
+      function topicLabel(topic) {
+        switch (topic) {
+          case "data": return "Data Pipeline";
+          case "summary": return "Season Summary";
+          case "tpi": return "Total Player Impact";
+          case "aow": return "Objective Weights";
+          case "synergy": return "Team Synergy";
+          case "splits": return "Split Snapshots";
+          default: return "Method";
+        }
+      }
+
+      // Cards: only calculations actually used in current script flow.
+      const calcItems = [
+        // ================= DATA & GUESTS =================
+        {
+          topic: "data",
+          title: "Data Source & Cleaning",
+          what:
+            "All stats are loaded from the published Google Sheet CSV (SHEET_URL). Each row is one player in one game.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We fetch the CSV once and cache it in <code>cachedRows</code>.</li>
+              <li>Column names are trimmed &amp; normalized (collapse multiple spaces).</li>
+              <li>Empty rows are skipped; numeric values are parsed with comma/percent handling.</li>
+            </ul>
+          `,
+          example:
+            "If the sheet says <code>Kill Part % = \"26\"</code> or <code>\"26%\"</code>, we read it as 26.0."
+        },
+        {
+          topic: "data",
+          title: "Guest Player Detection",
+          what:
+            "We mark anyone not in the core roster as a guest and keep them visually separated.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Base roster: Betzhamo, Jansen, Sweeney, denotes, Burningelf, HH.</li>
+              <li>We scan all <code>Player</code> names in the sheet.</li>
+              <li>Names not in the base list are added as guests with a default avatar &amp; a ⭐ badge.</li>
+            </ul>
+          `,
+          example:
+            "If <code>Player = \"RandomSub\"</code> appears, they show up as a guest with ⭐ and are treated with low-sample safeguards."
+        },
+
+        // ================= SEASON SUMMARY =================
+        {
+          topic: "summary",
+          title: "Season & Split Detection",
+          what:
+            "The Season Summary always uses your latest real data to know what 'current' means.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We detect all seasons from Les Nübs rows (fallback: all rows).</li>
+              <li><strong>Current Season</strong> = highest season value found.</li>
+              <li><strong>Current Split</strong> = highest split number in that season.</li>
+            </ul>
+          `,
+          example:
+            "If Season values are 2024 and 2025, we treat 2025 as current. Within 2025, the highest Split value becomes current split."
+        },
+        {
+          topic: "summary",
+          title: "Trend Windows (Summary)",
+          what:
+            "All summary numbers can be switched between last N games, current split, or full season.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We group by unique <code>Match ID / Game # / Date</code>.</li>
+              <li><strong>5 / 10 Games</strong>: use last 5/10 unique games.</li>
+              <li><strong>Current Split</strong>: games matching current split.</li>
+              <li><strong>Season</strong>: games in current season.</li>
+            </ul>
+          `,
+          example:
+            "If you click <em>5 Games</em>, winrate/KDA/KP/etc. only use those last 5 matches."
+        },
+        {
+          topic: "summary",
+          title: "Team Winrate & KDA",
+          what:
+            "Calculated from team-side rows in the filtered window.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Each <strong>game</strong> is counted once using our team rows when available.</li>
+              <li><strong>Winrate</strong> = wins / total games × 100.</li>
+              <li><strong>Team KDA</strong> = (ΣKills + ΣAssists) / max(1, ΣDeaths).</li>
+            </ul>
+          `,
+          example:
+            "If across selected games Les Nübs has 80/60/140, Team KDA = (80+140)/60 = 3.67."
+        },
+        {
+          topic: "summary",
+          title: "Side Winrates",
+          what:
+            "Blue/Red winrates are derived from unique games using side markers.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We detect side from <code>Team Side</code> or conventionally via <code>Winning Team</code> codes.</li>
+              <li>Blue/Red Winrate = wins on that side / games on that side.</li>
+            </ul>
+          `,
+          example:
+            "If you played 6 blue games and won 3, Blue Side Winrate = 50.0%."
+        },
+        {
+          topic: "summary",
+          title: "Average Kill Participation (Summary)",
+          what:
+            "Shows how 'involved' the team is on average across players per game.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>For each game: take all non-zero <code>Kill Part %</code> values, average them.</li>
+              <li>Then average those per-game values across the selected window.</li>
+            </ul>
+          `,
+          example:
+            "If in a game players have KP [70, 65, 40, 30, 25], that game’s team-average KP is their mean; we then average over games."
+        },
+
+        // ================= TOTAL PLAYER IMPACT =================
+        {
+          topic: "tpi",
+          title: "TPI Overview",
+          what:
+            "Total Player Impact is a 40–100 score: 55% individual performance, 45% objective & macro impact.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Per-player we aggregate all games in the chosen window.</li>
+              <li>Build <strong>macro groups</strong> (control, conversion, participation, vision, tempo, consistency).</li>
+              <li>Build <strong>individual metrics</strong> (KDA, KP, damage share, DPM, gold/min, etc.).</li>
+              <li>Normalize everything within the current team, then combine with fixed weights.</li>
+            </ul>
+          `,
+          example:
+            "A player with strong damage share, good KDA, and high objective presence will naturally rank higher than a KDA farmer with no impact."
+        },
+        {
+          topic: "tpi",
+          title: "Macro Groups per Player",
+          what:
+            "We summarize many advanced fields into 6 macro buckets.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li><strong>Control</strong> = avg(Objective Control Balance, Baron Control %, Tower Control %).</li>
+              <li><strong>Conversion</strong> = avg(Objective Conversion Rate, Objective Kills, Early Objective Ratio).</li>
+              <li><strong>Participation</strong> = Adaptive-weighted sum of Dragon/Herald/Baron/Tower/Atakhan/Void participation.</li>
+              <li><strong>Vision</strong> = avg(Vision Advantage, Vision-Objective Sync, Vision to Objective Ratio, Vision Denial Efficiency, Vision Impact Factor).</li>
+              <li><strong>Tempo</strong> = avg(Tempo Efficiency Index, Tempo Leader Index, Early Gold Share, Gold Momentum Rate, Macro Consistency, Macro Strength Index, Comeback Index).</li>
+              <li><strong>Consistency</strong> = avg(Synergy Index, Shared Participation Rate, Team Coordination Efficiency, Teamfight Efficiency, Consistency Index, Momentum Stability).</li>
+            </ul>
+          `,
+          example:
+            "If your Vision metrics are consistently above team, your Vision bucket lifts your macro score even with average KDA."
+        },
+        {
+          topic: "tpi",
+          title: "Role-Aware Macro Weighting",
+          what:
+            "Different roles are expected to drive different macro levers.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We infer each player's role mix from their games.</li>
+              <li>Heavier main-role share → small amplification of that role in the mix.</li>
+              <li>We blend role templates:
+                <ul class="list-disc list-inside ml-4">
+                  <li>JUNGLE: more weight on Control, Conversion, Participation, Tempo.</li>
+                  <li>SUPPORT: strong emphasis on Vision &amp; Participation.</li>
+                  <li>TOP/ MID / ADC: more weight on Control &amp; Conversion, less on Vision.</li>
+                </ul>
+              </li>
+              <li>The blended role profile defines how much each macro bucket counts for that player.</li>
+            </ul>
+          `,
+          example:
+            "A support with elite vision & objective presence is rewarded more than a top laner with identical raw vision numbers."
+        },
+        {
+          topic: "tpi",
+          title: "Individual Composite (Exact Weights)",
+          what:
+            "We normalize each stat 0–1 inside the team, then apply fixed weights.",
+          how: `
+            <p class="mb-1">Normalized metrics (higher is better, deaths inverted):</p>
+            <ul class="list-disc list-inside">
+              <li>KDA · 0.18</li>
+              <li>Kill Participation % · 0.14</li>
+              <li>Team Damage % · 0.14</li>
+              <li>Damage per Minute · 0.10</li>
+              <li>Gold/min · 0.08</li>
+              <li>CS/min · 0.06</li>
+              <li>Solo Kills · 0.06</li>
+              <li>Turret Plates Taken · 0.04</li>
+              <li>Mechanical Impact · 0.08</li>
+              <li>Tactical Intelligence · 0.06</li>
+              <li>Carry Impact Score · 0.06</li>
+              <li>Performance Rating · 0.05</li>
+              <li>Deaths per game (lower is better) · 0.05</li>
+            </ul>
+            <p class="mt-1 text-[0.65rem] text-gray-500">
+              (Sum of weights = 1.10; we keep this as-is from the script, so the composite is slightly scaled before blending.)
+            </p>
+          `,
+          example:
+            "Two players with the same KDA can land differently if one also has higher damage share, solo kills, and better discipline."
+        },
+        {
+          topic: "tpi",
+          title: "Macro Composite & Final TPI Score",
+          what:
+            "We combine role-weighted macro and individual composites into the final 40–100 score with sample-size correction.",
+          how: `
+            <ol class="list-decimal list-inside">
+              <li>For each player:
+                <ul class="list-disc list-inside ml-4">
+                  <li><strong>objComposite</strong> = role-weighted sum of normalized macro buckets.</li>
+                  <li><strong>indivComposite</strong> = weighted sum from the previous card.</li>
+                  <li><strong>rawComposite</strong> = 0.55 · indivComposite + 0.45 · objComposite.</li>
+                </ul>
+              </li>
+              <li>Let <code>teamMean</code> be the average rawComposite of all players.</li>
+              <li>Define <code>minGamesFull = max(3, round(0.3 · maxGames))</code>.</li>
+              <li><strong>sampleFactor</strong> = clamp(games / minGamesFull, 0..1).</li>
+              <li><strong>blendedComposite</strong> = sampleFactor · rawComposite + (1 - sampleFactor) · teamMean.</li>
+              <li>Final <strong>TPI</strong> = 40 + blendedComposite · (100 - 40).</li>
+            </ol>
+            <p class="mt-1 text-[0.65rem] text-gray-500">
+              Players below the sample threshold are shrunk toward team average and flagged ⭐ as guests.
+            </p>
+          `,
+          example:
+            "If a player hard smurfs in 2 games, they won't insta-hit 95 TPI — their score is pulled toward team baseline until more data exists."
+        },
+
+        // ================= ADAPTIVE OBJECTIVE WEIGHTS =================
+        {
+          topic: "aow",
+          title: "Adaptive Objective Weights (AOW)",
+          what:
+            "We learn how important each objective is for your team instead of using fixed theorycraft.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>For each of Dragon, Herald, Baron, Tower, Atakhan, Void Grubs:
+                <ul class="list-disc list-inside ml-4">
+                  <li>Mark games where you secured it early or took any of that objective.</li>
+                  <li>Compute WR with vs WR without.</li>
+                  <li>Impact = WR(with) − WR(without).</li>
+                </ul>
+              </li>
+              <li>If there aren't enough games, fall back to static weights:
+                Dragon 0.25, Herald 0.10, Baron 0.30, Tower 0.15, Atakhan 0.10, Void 0.10.</li>
+              <li>Final weight = 70% based on observed impact + 30% static, then renormalized to sum to 1.</li>
+              <li>These weights feed directly into each player's <strong>Objective Participation</strong> component in TPI.</li>
+            </ul>
+          `,
+          example:
+            "If your WR jumps when you secure Baron but barely changes with first Herald, Baron’s weight rises and Herald’s drops in the model."
+        },
+
+        // ================= TEAM SYNERGY & IDENTITY =================
+        {
+          topic: "synergy",
+          title: "Duo Synergy Score",
+          what:
+            "Identifies stable 2-player cores whose lineups overperform team baseline.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>For each duo with ≥3 games together:
+                <ul class="list-disc list-inside ml-4">
+                  <li>Compute their duo WR and lift vs team WR.</li>
+                  <li>Include Synergy Index, Shared Participation Rate, and Team Coordination Efficiency where available.</li>
+                  <li>Score ≈ 0.5·(WR) + 0.25·positive WR lift + 0.15·synergy + 0.05·shared + 0.05·coord.</li>
+                </ul>
+              </li>
+              <li>Top duos populate the "Most Reliable Duo" card.</li>
+            </ul>
+          `,
+          example:
+            "If Betzhamo+Sweeney win far more together than team average and share high synergy values, they surface as your anchor duo."
+        },
+        {
+          topic: "synergy",
+          title: "Bot Lane Champion Synergy",
+          what:
+            "Looks at recurring ADC+Support champion pairs and how they perform vs baseline.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Track each (ADC champ, SUP champ) combo with ≥2 games.</li>
+              <li>Compute WR and lift vs overall team WR.</li>
+              <li>Best lifts show up as "Best Bot Lane Combo".</li>
+            </ul>
+          `,
+          example:
+            "If Jinx + Nautilus runs 70% WR while team is 50%, it's highlighted as a top lane identity pick."
+        },
+        {
+          topic: "synergy",
+          title: "Signature Picks by Role",
+          what:
+            "Finds champions where a player significantly outperforms their own baseline on that pick.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>For each (role, champ, player) with ≥3 games:
+                <ul class="list-disc list-inside ml-4">
+                  <li>Compare champ WR/KDA/impact vs that player's overall WR/KDA/impact.</li>
+                  <li>Build an identityScore from performance, volume, and contribution.</li>
+                </ul>
+              </li>
+              <li>Top scores per role become signature picks; if data is thin, we label them as "best so far" instead of hard identity.</li>
+            </ul>
+          `,
+          example:
+            "If Sweeney’s Viego has much higher WR & impact than his average jungle pool, it's flagged as a signature."
+        },
+        {
+          topic: "synergy",
+          title: "Team Playstyle DNA",
+          what:
+            "Narrative bullets generated from differences between wins and losses on key metrics.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Compare average Gold Diff @10/15, Macro Strength, Tempo, Vision Impact, Scaling Index, Clutch Index etc. in wins vs losses.</li>
+              <li>Trigger readable statements only when gaps are meaningful (e.g., much better with early gold leads or first drake).</li>
+              <li>If nothing spikes, we state that no single coinflip stat defines your wins.</li>
+            </ul>
+          `,
+          example:
+            "If wins almost always include first Herald and strong Tempo Efficiency, DNA will say you’re a tempo/objective-driven team."
+        },
+        {
+          topic: "synergy",
+          title: "Objective Impact Priorities (Synergy View)",
+          what:
+            "Shows which objectives swing your winrate the most in practice.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>For each tracked objective:
+                <ul class="list-disc list-inside ml-4">
+                  <li>GamesWith = games where you secured it (first or at all).</li>
+                  <li>GamesWithout = rest.</li>
+                  <li>WR(with), WR(without), Impact = WR(with) − WR(without).</li>
+                </ul>
+              </li>
+              <li>Ranked by Impact to label "Most impactful" and other key factors.</li>
+            </ul>
+          `,
+          example:
+            "If your WR is 75% with first Baron and 30% without, Baron will be top priority in this panel."
+        },
+
+        // ================= SPLIT SNAPSHOTS =================
+        {
+          topic: "splits",
+          title: "Split Grouping",
+          what:
+            "We slice Season 25 into up to three labeled splits for cleaner mid-term evaluation.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Rows are assigned to Split 1/2/3 based on the <code>Split</code> column (1/2/3 or labels).</li>
+              <li>Only Season 25 / Season 2025 rows are considered for these cards.</li>
+            </ul>
+          `,
+          example:
+            "If a row has <code>Split = 2</code>, it only contributes to the Split 2 card."
+        },
+        {
+          topic: "splits",
+          title: "Per-Split Team Metrics",
+          what:
+            "Each split card shows games, winrate, team KDA and average KP for that phase.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>Unique games per split: counted via Match ID / Game # / etc.</li>
+              <li>Team WR = unique wins / unique games (using Result field).</li>
+              <li>Team KDA = (ΣKills + ΣAssists) / max(1, ΣDeaths) from player rows.</li>
+              <li>Avg KP = average of valid player Kill Part % values in that split.</li>
+            </ul>
+          `,
+          example:
+            "If Split 1 has 10 games, 6 wins, and combined 300/250/600, KDA = (300+600)/250 = 3.6, WR = 60%."
+        },
+        {
+          topic: "splits",
+          title: "Player Tables & Trends per Split",
+          what:
+            "Within each split, we rank players by KDA and show light trend vs previous split.",
+          how: `
+            <ul class="list-disc list-inside">
+              <li>We reuse the same <code>calcStats</code> totals per split.</li>
+              <li>Per player: games, winrate, split KDA, average KP, MVP/ACE counts.</li>
+              <li>Trend arrow compares current-split KDA to previous split’s KDA for that player (if available).</li>
+              <li>Guest players (⭐) appear at the bottom of rankings.</li>
+            </ul>
+          `,
+          example:
+            "If a player’s KDA jumps from 2.0 in Split 1 to 3.5 in Split 2, they’ll show an ▲ trend with the improvement."
+        }
+      ];
+
+      // Render cards
+      const grid = document.getElementById("calc-grid");
+
+      function createCalcCard(item) {
+        return `
+          <div
+            class="calc-card dashboard-card !p-3 text-[0.7rem] flex flex-col gap-1.5 border border-gray-100"
+            data-topic="${item.topic}"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-[0.8rem] font-semibold text-gray-900">
+                ${item.title}
+              </h3>
+              <span class="px-2 py-0.5 rounded-full text-[0.55rem] text-gray-500 bg-gray-50 border border-gray-100">
+                ${topicLabel(item.topic)}
+              </span>
+            </div>
+            <p class="text-gray-700 leading-snug">
+              ${item.what}
+            </p>
+            <div class="text-[0.65rem] text-gray-600">
+              ${item.how}
+            </div>
+            ${
+              item.example
+                ? `<p class="text-[0.65rem] text-orange-500">
+                     <span class="font-semibold">Example:</span> ${item.example}
+                   </p>`
+                : ""
+            }
+          </div>
+        `;
+      }
+
+      function renderCalcCards() {
+        grid.innerHTML = calcItems.map(createCalcCard).join("");
+      }
+
+      renderCalcCards();
+
+      // Filter logic
+      const filterButtons = document.querySelectorAll(".calc-filter-btn");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const topic = btn.getAttribute("data-topic") || "all";
+
+          // reset buttons
+          filterButtons.forEach((b) => {
+            b.classList.remove(
+              "bg-orange-500",
+              "text-white",
+              "border-orange-500",
+              "shadow-sm"
+            );
+            b.classList.add("bg-white", "text-gray-700", "border-gray-200");
+          });
+
+          // activate this one
+          btn.classList.add(
+            "bg-orange-500",
+            "text-white",
+            "border-orange-500",
+            "shadow-sm"
+          );
+          btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
+
+          // show/hide cards
+          document.querySelectorAll(".calc-card").forEach((card) => {
+            const t = card.getAttribute("data-topic");
+            if (topic === "all" || t === topic) {
+              card.classList.remove("hidden");
+            } else {
+              card.classList.add("hidden");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>

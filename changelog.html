@@ -1,97 +1,234 @@
-<body class="fade-bg min-h-screen flex flex-col items-center p-6 text-gray-800">
-
- <!-- Back Button -->
-  <a href="index.html"
-     class="inline-flex items-center gap-2 bg-orange-500 text-white px-4 py-2 rounded-full shadow-md hover:bg-orange-600 transition-all duration-200 fixed top-5 left-5 z-50">
-    ← Back to Dashboard
-  </a>
-  
+<!doctype html>
+<html lang="en">
   <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Les Nübs — Version Tracker</title>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Les Nübs — Version Tracker</title>
 
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonts & Tailwind (match main dashboard) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Custom Styles -->
-  <style>
-    .fade-bg {
-      background: linear-gradient(135deg, #fffaf5, #eef2ff);
-    }
-    body {
-      font-family: system-ui, sans-serif;
-    }
-  </style>
-</head>
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+  </head>
 
+  <body class="fade-bg min-h-screen flex flex-col text-gray-800">
+    <!-- =======================================
+         HEADER / SHELL (aligned with main)
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <!-- Brand -->
+        <div class="flex items-center gap-2">
+          <div
+            class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">
+              Les Nübs — Season 25
+            </span>
+            <span class="text-[0.65rem] text-slate-500">
+              Version Tracker
+            </span>
+          </div>
+        </div>
 
-  <main class="max-w-4xl w-full space-y-6">
+        <!-- Back to Dashboard -->
+        <a
+          href="index.html"
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
+                 bg-orange-500 text-white shadow-sm hover:bg-orange-600 hover:shadow-md
+                 transition-all duration-200"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
+    </header>
 
-<section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Version 2.0.2 — October 2025</h2>
-      <li> Added Guest Player Support </li>
-      <li> Dashboard now detects and displays guest players automatically from Google Sheets.</li>
-      <li> Guest players appear in split tables with a ⭐ indicator and neutral ranking at the bottom.</li>
-      <li> Added Top 3 MVPs (🏅) and Top 3 ACEs (⚡) lists at the bottom of each split card.</li>
-      <li> Guest players remain visible in MVP/ACE rankings for transparency.</li>
-      <li> Matches with no K/D/A data no longer count toward games played.</li>
-      <li> Winrate calculations adjusted to prevent values above 100%.</li>
-      <li> Improved internal data filtering for cleaner stats.</li>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-      </ul>
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-5xl mx-auto px-4 pt-6 pb-3">
+        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
+          Les Nübs — Changelog & Release Notes
+        </h1>
+        <p class="text-xs sm:text-sm text-gray-600">
+          A running log of how the dashboard evolved from cursed spreadsheets to an actually usable tool.
+        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-1 italic">
+          Historical context for when someone asks “Why is this stat here?” or
+          “When did we start tracking Achten’s crimes?”
+        </p>
+      </div>
     </section>
-   
-   <section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Version 2.0.1 — October 2025</h2>
-      <li> Time AVG & Mini Cards Top Summary</li>
-      <li> Version Tracker</li>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-      </ul>
-    </section>
-   
-   <section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Version 2.0.0 — October 2025</h2>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-        <li> Added Split Performance Cards with dynamic trend arrows</li>
-        <li> Unified color palette and typography across components</li>
-        <li> Added new metrics (OP.GG Score, Kill Participation trend)</li>
-        <li> Improved sheet loading performance and reduced parsing delay</li>
-        <li> Introduced avatar-based character select screen & reused old drawings</li>
-        <li> Migrated dataset to structured Game_Logs format in google sheets</li>
-        <li> Updated formulas to handle 0-death KDA correctly</li>
-        <li> Bought a website url</li>
-        <li> Updated the google sheets for easier manual data collections after matches (not yet tested)</li>
-      </ul>
-    </section>
 
-    <section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Version 1.5 — October 2025</h2>
-      <li>Failure, Data in sheets way to messy to integrate nicely into a new website. Not futureproof for later add ons (Achten afk stats)</li>
-      <li>Integration into Github, worked fine</li>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-      </ul>
-    </section>
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    <main class="w-full flex-1">
+      <div class="max-w-5xl mx-auto px-4 pb-10 space-y-4">
+       
+      <!-- v3.0.0 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 3.0 — November 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              BIG BIG UPDATES. Ready for the future. No Achten AFK tracker yet!
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Since the original Les Nübs dashboard, v3.0 turns the project into a "fully automated" (I still need to update the csv manually and pull the data from riot manually with a script comment...but ok one battle after another), 
+                role-aware analytics hub. Match data now flows directly from the Riot API into structured sheets/CSV, powering unified metrics for Total Player Impact, Team Synergy & Identity, Split Snapshots, and objective control without manual data entry. The UI was rebuilt with a consistent card layout, navigation shell, avatars, guest-player handling, and transparent calculation pages so every score (KDA, KP, objective impact, macro/vision indices, etc.) is explained and reproducible from source data.</li>
+            </ul>
+          </div>
+        </section> 
 
-      <section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Version 1.0 — Split 1-3 2025</h2>
-      <li>Goggle Sheets with different add ons an visual layouts from Split 1-3</li>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-      </ul>
-    </section>
 
-    <section class="bg-white p-6 rounded-2xl shadow">
-      <h2 class="text-xl font-bold text-orange-600 mb-2">Upcoming hopefully</h2>
-      <ul class="list-disc list-inside text-gray-700 space-y-1">
-        <li> Riot API Integration (auto-update match logs) Dev Account already active</li>
-        <li> Role-based normalization and Player Performance Index (PPI), so comparions may be fair in the future (KDA comparision sucks</li>
-        <li> Extended analytics for damage, vision, objectives, when the api thingy works</li>
-        <li>Achten afk tracker</li>
-      </ul>
-    </section>
-  </main>
 
-  <footer class="mt-8 text-gray-500 text-sm">
-    Built with love, and too much time, so our Team may never not play games — LeBlenzo © 2025  
-  </footer>
-</body>
+        <!-- v2.0.2 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 2.0.2 — October 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              Guest handling & split polish.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Added guest player support from Google Sheets.</li>
+              <li>Guest players are auto-detected and displayed with a ⭐ tag and neutral ordering.</li>
+              <li>Top 3 MVPs (🏅) and Top 3 ACEs (⚡) shown per split for quick glory checks.</li>
+              <li>Guest players can still appear in MVP/ACE lists for transparency.</li>
+              <li>Games without valid K/D/A no longer count toward games played.</li>
+              <li>Fixed winrate edge cases to avoid values sneaking above 100%.</li>
+              <li>Improved internal filtering for cleaner, more reliable stats.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- v2.0.1 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 2.0.1 — October 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              First wave of visual and summary upgrades.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Added average game time to the Season Summary.</li>
+              <li>Introduced mini-cards in the top summary row.</li>
+              <li>Created this Version Tracker page.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- v2.0.0 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 2.0.0 — October 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              “Real dashboard” era begins.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Added Split Performance cards with dynamic KDA trend arrows.</li>
+              <li>Unified color palette, typography, and card layout.</li>
+              <li>Integrated extra metrics (OP.GG score, kill participation trends, etc.).</li>
+              <li>Improved sheet loading & parsing performance.</li>
+              <li>
+                Introduced avatar-based character select using the iconic Les Nübs artwork.
+              </li>
+              <li>Migrated logs into a structured <code>Game_Logs</code> format for future features.</li>
+              <li>Fixed KDA calculation for 0-death games.</li>
+              <li>Bought an actual domain, because commitment.</li>
+              <li>
+                Reworked Google Sheets layout to make post-game input less painful
+                (pending long-term validation).
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- v1.5 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 1.5 — October 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              The “we tried” prototype.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Attempted to wire messy legacy sheets into a website.</li>
+              <li>Learned that chaos data is not future-proof (especially for Achten stats).</li>
+              <li>Set up GitHub integration successfully.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- v1.0 -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Version 1.0 — Split 1–3, 2025
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              Pure Google Sheets energy.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Multiple sheets and add-ons visualizing early Split 1–3 stats.</li>
+              <li>No unified dashboard yet — but the data obsession started here.</li>
+            </ul>
+          </div>
+        </section>
+
+        <!-- Upcoming -->
+        <section class="section-wrapper">
+          <div class="dashboard-card">
+            <h2 class="text-lg font-semibold text-orange-500 mb-1">
+              Upcoming (hopefully)
+            </h2>
+            <p class="text-[0.7rem] text-gray-500 mb-2">
+              Things that live in the backlog / meme board.
+            </p>
+            <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+              <li>Riot API integration for auto-updating match logs (dev account active).</li>
+              <li>
+                Role-based normalization &amp; Player Performance Index for fairer comparisons
+                (no more raw KDA slander).
+              </li>
+              <li>Deeper analytics for damage, vision, and objectives once the API is stable.</li>
+              <li>Achten AFK tracker (the people demand accountability).</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- =======================================
+         FOOTER
+    ======================================== -->
+    <footer class="w-full border-t border-slate-200">
+      <div
+        class="max-w-5xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500"
+      >
+        Built with entirely too much effort so the team has zero excuses —
+        LeBenz &amp; Les Nübs · 2025
+      </div>
+    </footer>
+  </body>
+</html>

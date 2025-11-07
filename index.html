@@ -4,68 +4,238 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Les Nübs — Season 25 Dashboard</title>
-    
-<nav class="absolute top-4 right-6 flex gap-4 text-sm text-gray-600">
-  <a href="index.html" class="hover:text-orange-500">🏠 Dashboard</a>
-  <a href="changelog.html" class="hover:text-orange-500">🧾 Version Tracker</a>
-</nav>
 
-    <!-- Tailwind CSS & PapaParse -->
+    <!-- Fonts & Tailwind -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- PapaParse -->
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
-    <style>
-      body {
-        overflow-x: hidden;
-      }
-      .fade-bg {
-        background: linear-gradient(135deg, #fff5f5, #eef2ff);
-      }
-    </style>
+    <!-- Your CSS -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="assets/favicon.ico" />
   </head>
-  
-  <body
-    class="fade-bg min-h-screen flex flex-col items-center p-6 text-gray-800"
-  >
-    <header class="text-center my-6">
-      <h1 class="text-3xl font-bold text-orange-500">
-        Les Nübs — The Chronicles Since Season 25 - Dashboard V 2.0
-      </h1>
-      <p class="text-gray-600">Exploring performance data</p>
-      <p class="text-gray-600">There is a future where we know how many times Achten went afk during a critical game, but for now this future is not yet here!</p>
-    </header>
-    
-<!-- Character Select Section -->
-<section id="character-select" class="my-10 text-center">
-  <h2 class="text-2xl font-bold text-orange-600 mb-4">Choose Your Champion</h2>
-  <p class="text-gray-500 mb-6 text-sm">Click a Les Nüb to highlight their stats</p>
-  <div id="avatars" class="flex flex-wrap justify-center gap-6"></div>
-</section>
 
-    <main class="w-full max-w-6xl mx-auto">
-      <div id="sheet-container" class="bg-white shadow rounded-lg p-4">
-        <div id="status" class="text-sm text-gray-600 mb-4">Loading data...</div>
+  <body class="fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
+  <!-- =======================================
+     TOP NAVIGATION / APP SHELL
+======================================== -->
+<header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+    <!-- Brand -->
+    <div class="flex items-center gap-2">
+      <div class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold">
+        LN
+      </div>
+      <div class="flex flex-col leading-tight">
+        <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 25</span>
+        <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v3.0</span>
+      </div>
+    </div>
+
+    <!-- Desktop Nav -->
+    <nav class="hidden md:flex items-center gap-5 text-xs font-medium text-slate-600">
+      <!-- In-page navigation -->
+      <button class="hover:text-orange-500" data-scroll="#character-select">Players</button>
+      <button class="hover:text-orange-500" data-scroll="#season-summary">Summary</button>
+      <button class="hover:text-orange-500" data-scroll="#objective-impact">Objectives &amp; TPI</button>
+      <button class="hover:text-orange-500" data-scroll="#team-synergy">Team Synergy</button>
+      <button class="hover:text-orange-500" data-scroll="#splits">Splits</button>
+
+      <!-- Linked pages -->
+      <a href="metrics.html" class="hover:text-orange-500">Metric Glossary</a>
+      <a href="methodology.html" class="hover:text-orange-500">Calculations</a>
+      <a href="changelog.html" class="hover:text-orange-500">Version Tracker</a>
+    </nav>
+
+    <!-- Mobile Menu Toggle -->
+    <button
+      id="nav-toggle"
+      class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700"
+    >
+      <span id="nav-toggle-icon">☰</span>
+    </button>
+  </div>
+
+  <!-- Mobile Nav Panel -->
+  <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+      <!-- In-page navigation -->
+      <button class="py-1 text-left hover:text-orange-500" data-scroll="#character-select">
+        Players
+      </button>
+      <button class="py-1 text-left hover:text-orange-500" data-scroll="#season-summary">
+        Summary
+      </button>
+      <button class="py-1 text-left hover:text-orange-500" data-scroll="#objective-impact">
+        Objectives &amp; TPI
+      </button>
+      <button class="py-1 text-left hover:text-orange-500" data-scroll="#team-synergy">
+        Team Synergy
+      </button>
+      <button class="py-1 text-left hover:text-orange-500" data-scroll="#splits">
+        Splits
+      </button>
+
+      <!-- Linked pages -->
+      <a href="metrics.html" class="py-1 text-left hover:text-orange-500">
+        Metric Glossary
+      </a>
+      <a href="methodology.html" class="py-1 text-left hover:text-orange-500">
+        Calculations
+      </a>
+      <a href="changelog.html" class="py-1 text-left hover:text-orange-500">
+        Version Tracker
+      </a>
+    </div>
+  </div>
+</header>
+
+
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
+          Les Nübs — The Chronicles Since Season 25
+        </h1>
+        <p class="text-xs sm:text-sm text-gray-600">
+          One hub for objective control, individual impact, and long-term trends.
+        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">
+          There is a future where we track how many times Achten went AFK in clutch moments. Today,
+          we settle for everything else.
+        </p>
+      </div>
+    </section>
+
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    <main class="w-full flex-1">
+      <div
+        id="sheet-container"
+        class="max-w-6xl mx-auto px-4 pb-10"
+      >
+        <!-- Load status -->
+        <div id="status" class="text-xs text-gray-600 mb-4">
+          Loading data...
+        </div>
+
+        <!-- Character Select -->
+        <section id="character-select" class="my-6">
+          <h2 class="text-lg font-semibold text-orange-600 mb-1">
+            Choose Your Champion
+          </h2>
+          <p class="text-xs text-gray-500 mb-4">
+            Click a Les Nüb to highlight their row across all tables.
+          </p>
+          <div
+            id="avatars"
+            class="flex flex-wrap gap-4"
+          ></div>
+        </section>
 
         <!-- Season Summary -->
-        <div id="season-summary"></div>
+        <section id="summary-section" class="mb-8">
+          <div id="season-summary"></div>
+        </section>
 
-        <!-- Top 3 Overview -->
-        <div id="season-overview"></div>
+        <!-- Objective Impact + Total Player Impact (Individual) -->
+        <!-- This container is fully rendered by renderObjectiveImpact(data).
+             We intentionally keep it EMPTY here (no static demo content). -->
+        <section id="objective-impact-section" class="mb-8">
+          <div id="objective-impact"></div>
+        </section>
 
-        <!-- 🆕 KDA Trends Section -->
-        <div id="kda-trends"></div>
+        <!-- Performance Impact (kept as complementary perspective) -->
+        <section id="performance-impact-section" class="mb-8">
+          <div id="performance-impact"></div>
+        </section>
 
-        <!-- Splits Section -->
-        <div id="splits" class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6"></div>
+        <!-- Team Synergy & Identity -->
+        <section id="team-synergy-section" class="mb-8">
+         <div id="team-synergy"></div>
+        </section>
+
+
+        <!-- (Optional) Season Overview hook, if you use renderOverview -->
+        <section id="season-overview-section" class="mb-8">
+          <div id="season-overview"></div>
+        </section>
+
+        <!-- Trends -->
+        <section id="trends-section" class="mb-8">
+          <div id="kda-trends"></div>
+        </section>
+
+        <!-- Splits -->
+        <!-- Splits -->
+<section id="splits" class="mb-8">
+
+</section>
+
       </div>
     </main>
 
-    <footer class="text-gray-500 text-sm mt-8 text-center">
-      Data auto-updates from Google Sheets — Season 25 — by LeBlenzo, with love
-      and too much time.
+    <!-- =======================================
+         FOOTER
+    ======================================== -->
+    <footer class="w-full border-t border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
+        Data auto-syncs from Google Sheets · Season 25 · Built by LeBenz &amp; Les Nübs staff.
+      </div>
     </footer>
 
-    <!-- External Script -->
+    <!-- =======================================
+         SCRIPTS
+    ======================================== -->
+    <!-- Main logic (the big script with loadData, renderObjectiveImpact, etc) -->
     <script src="script.js"></script>
+
+    <!-- Nav + Smooth Scroll -->
+    <script>
+      const navToggle = document.getElementById("nav-toggle");
+      const navMenu = document.getElementById("nav-menu");
+      const navToggleIcon = document.getElementById("nav-toggle-icon");
+
+      if (navToggle && navMenu && navToggleIcon) {
+        navToggle.addEventListener("click", () => {
+          const open = !navMenu.classList.contains("hidden");
+          if (open) {
+            navMenu.classList.add("hidden");
+            navToggleIcon.textContent = "☰";
+          } else {
+            navMenu.classList.remove("hidden");
+            navToggleIcon.textContent = "✕";
+          }
+        });
+      }
+
+      document.querySelectorAll("[data-scroll]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = btn.getAttribute("data-scroll");
+          if (!target) return;
+          const el = document.querySelector(target);
+          if (!el) return;
+
+          const headerOffset = 72;
+          const rect = el.getBoundingClientRect();
+          const offsetTop = window.scrollY + rect.top - headerOffset;
+
+          window.scrollTo({ top: offsetTop, behavior: "smooth" });
+
+          if (navMenu && !navMenu.classList.contains("hidden")) {
+            navMenu.classList.add("hidden");
+            if (navToggleIcon) navToggleIcon.textContent = "☰";
+          }
+        });
+      });
+    </script>
   </body>
 </html>

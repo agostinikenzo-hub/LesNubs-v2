@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Les Nübs — Metric Definitions</title>
+
+    <!-- Fonts & Tailwind (match main dashboard) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Shared Styles -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+  </head>
+
+  <body class="fade-bg min-h-screen flex flex-col text-gray-800">
+    <!-- =======================================
+         HEADER / SHELL
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+        <!-- Brand -->
+        <div class="flex items-center gap-2">
+          <div
+            class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">
+              Les Nübs — Season 25
+            </span>
+            <span class="text-[0.65rem] text-slate-500">
+              Metric Glossary
+            </span>
+          </div>
+        </div>
+
+        <!-- Back to Dashboard -->
+        <a
+          href="index.html"
+          class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
+                 bg-orange-500 text-white shadow-sm hover:bg-orange-600 hover:shadow-md
+                 transition-all duration-200"
+        >
+          ← Back to Dashboard
+        </a>
+      </div>
+    </header>
+
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
+          Metric Glossary — What We Track & Why
+        </h1>
+        <p class="text-xs sm:text-sm text-gray-600 max-w-3xl">
+          Every value on the dashboard comes from structured match logs or the Riot API.
+          Use this page to see what each metric means, how it’s calculated, and how it
+          fits into your story as a team.
+        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-1 italic">
+          Sample values below are taken from a real game in Season 25 to keep things concrete.
+        </p>
+      </div>
+    </section>
+
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    <main class="w-full flex-1">
+      <div class="max-w-6xl mx-auto px-4 pb-10">
+        <!-- Filter Tabs -->
+        <section class="section-wrapper mb-4">
+          <div class="dashboard-card flex flex-col gap-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 class="text-[1.05rem] font-semibold text-orange-500">
+                  Explore Metrics by Topic
+                </h2>
+                <p class="text-[0.7rem] text-gray-600 max-w-xl">
+                  Click a topic to see only related metrics. Click again on “All Metrics”
+                  to reset the view.
+                </p>
+              </div>
+
+              <div class="flex flex-wrap gap-1.5 text-[0.65rem]">
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-orange-500 bg-orange-500 text-white font-medium shadow-sm"
+                  data-topic="all"
+                >
+                  All Metrics
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="core"
+                >
+                  Core &amp; KDA
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="vision"
+                >
+                  Vision &amp; Wards
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="damage-econ"
+                >
+                  Damage &amp; Economy
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="objectives"
+                >
+                  Objectives
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="teamfight"
+                >
+                  Teamfights &amp; Synergy
+                </button>
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="macro-advanced"
+                >
+                  Macro &amp; Indices
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Metrics Grid -->
+        <section class="section-wrapper">
+          <div id="metrics-grid" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <!-- Cards are injected by JS -->
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- =======================================
+         FOOTER
+    ======================================== -->
+    <footer class="w-full border-t border-slate-200">
+      <div
+        class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500"
+      >
+        Built so nobody can argue “I didn’t know what that stat meant.” — Les Nübs · 2025
+      </div>
+    </footer>
+
+    <!-- =======================================
+         METRIC DATA + INTERACTIONS
+    ======================================== -->
+    <script>
+      // Small helper: build cards from a structured definition list.
+      const metrics = [
+        // ================= CORE & KDA =================
+        {
+          id: "kills",
+          topic: "core",
+          name: "Kills",
+          source: "Game Logs / Riot Match",
+          explain:
+            "Number of enemy champions you personally finished off. Baseline indicator of offensive impact.",
+          calc: "Directly from match logs. No extra scaling.",
+          sample: "Example: 6 kills (Illaoi, Top, Sample Game)",
+        },
+        {
+          id: "deaths",
+          topic: "core",
+          name: "Deaths",
+          source: "Game Logs / Riot Match",
+          explain:
+            "How many times you died. Used as a risk & discipline component in multiple scores.",
+          calc: "Directly from match logs.",
+          sample: "Example: 5 deaths (Illaoi, same game)",
+        },
+        {
+          id: "assists",
+          topic: "core",
+          name: "Assists",
+          source: "Game Logs / Riot Match",
+          explain:
+            "Credit for contributing damage/CC to a kill without landing the final blow.",
+          calc: "Riot assist definition. Used in KDA, KP, and teamplay measures.",
+          sample: "Example: 1 assist (Illaoi, same game)",
+        },
+        {
+          id: "kda",
+          topic: "core",
+          name: "KDA",
+          source: "Derived",
+          explain:
+            "Core efficiency metric: how much you contribute to kills vs how often you die.",
+          calc: "(Kills + Assists) / max(1, Deaths). For 0 deaths, we use K+A.",
+          sample: "Example: (6+1)/5 = 1.4",
+        },
+        {
+          id: "kill-participation",
+          topic: "core",
+          name: "Kill Participation %",
+          source: "Derived",
+          explain:
+            "Share of your team's kills you participated in. Measures involvement, not just raw stats.",
+          calc:
+            "(Kills + Assists in which you were involved) / (Total team kills) × 100.",
+          sample:
+            "Example from sheet: 26% means the player was involved in roughly 1/4 of team kills.",
+        },
+        {
+          id: "opgg-score",
+          topic: "core",
+          name: "OP.GG Score",
+          source: "External / Imported",
+          explain:
+            "A composite external rating (if available) giving a quick view of in-game performance.",
+          calc:
+            "Pulled as-is when available. Not used directly in our advanced indices.",
+          sample: "Example: blank in sample = not provided for that match.",
+        },
+        {
+          id: "time",
+          topic: "core",
+          name: "Game Time",
+          source: "Game Logs",
+          explain:
+            "Total duration of the match. Used to normalize per-minute metrics.",
+          calc: "Direct from match; also converted into minutes for rate stats.",
+          sample: "Example: 35 min",
+        },
+
+        // ================= VISION =================
+        {
+          id: "pinks",
+          topic: "vision",
+          name: "Control Wards Placed (PINK)",
+          source: "Game Logs / Riot Match",
+          explain:
+            "How many control wards you bought and placed. Indicator of investment into vision.",
+          calc: "Directly from logs. Combined with vision score & kills for efficiency.",
+          sample: "Example: 0 (Illaoi), 8 (Nautilus) in sample game.",
+        },
+        {
+          id: "wards",
+          topic: "vision",
+          name: "Wards Placed",
+          source: "Game Logs",
+          explain:
+            "Total stealth/normal wards placed. More isn't always better — we check impact too.",
+          calc: "Direct, used in Vision Score/min and Warding Efficiency.",
+          sample: "Example: 10 wards (Illaoi), 30 wards (Nautilus).",
+        },
+        {
+          id: "wards-killed",
+          topic: "vision",
+          name: "Wards Killed",
+          source: "Game Logs",
+          explain: "Enemy wards you cleared. Key for vision denial.",
+          calc: "Direct. Fed into Vision Denial Efficiency & Vision Impact.",
+          sample: "Example: 2 wards killed (Illaoi).",
+        },
+        {
+          id: "vision-score",
+          topic: "vision",
+          name: "Vision Score",
+          source: "Riot API / Match",
+          explain:
+            "Riot’s composite vision metric (wards placed, cleared, revealed enemies, etc.).",
+          calc:
+            "Taken directly; also used per minute and vs. objectives to judge quality of vision.",
+          sample: "Example: 20 vision score (Illaoi), 82 (Nautilus).",
+        },
+        {
+          id: "vision-score-min",
+          topic: "vision",
+          name: "Vision Score per Minute",
+          source: "Derived",
+          explain:
+            "How much vision impact you create relative to game length.",
+          calc: "Vision Score / Game Time (minutes).",
+          sample: "Example: 20 / 35 ≈ 0.57 VS/min.",
+        },
+        {
+          id: "vision-advantage",
+          topic: "vision",
+          name: "Vision Advantage",
+          source: "Derived (Team-level)",
+          explain:
+            "How much more vision your team has vs. enemies around key timings & objectives.",
+          calc:
+            "Team vision metrics vs enemy, scaled around objectives and map control windows.",
+          sample: "Example: positive values = you usually see more than they do.",
+        },
+
+        // ================= DAMAGE & ECON =================
+        {
+          id: "gold-earned",
+          topic: "damage-econ",
+          name: "Gold Earned",
+          source: "Match",
+          explain:
+            "Total gold you generated in the game. Basis for tempo, item spikes, and econ indices.",
+          calc: "Direct. Used for Gold/min & Gold Share.",
+          sample: "Example: 12,908 gold (Illaoi).",
+        },
+        {
+          id: "gold-min",
+          topic: "damage-econ",
+          name: "Gold per Minute",
+          source: "Derived",
+          explain:
+            "How efficiently you converted time into gold. Strong proxy for tempo & farming.",
+          calc: "Gold Earned / Game Time (minutes).",
+          sample: "Example: 12,908 / 35 ≈ 369 gold/min.",
+        },
+        {
+          id: "cs",
+          topic: "damage-econ",
+          name: "CS & CS/min",
+          source: "Match",
+          explain:
+            "Creep score and farm rate. Measures lane control, resource reliability, and scaling.",
+          calc: "CS/min = CS / Game Time (minutes).",
+          sample: "Example: 228 CS → 6.5 CS/min.",
+        },
+        {
+          id: "damage-dealt",
+          topic: "damage-econ",
+          name: "Damage Dealt",
+          source: "Match",
+          explain:
+            "Total damage you dealt to champions. Basis for DPM and carry impact.",
+          calc: "Direct from match logs.",
+          sample: "Example: 28,948 damage (Illaoi).",
+        },
+        {
+          id: "dpm",
+          topic: "damage-econ",
+          name: "Damage per Minute (DPM)",
+          source: "Derived",
+          explain:
+            "How much champion damage you output per minute. Core carry indicator.",
+          calc: "Damage Dealt / Game Time (minutes).",
+          sample: "Example: 28,948 / 35 ≈ 827 DPM.",
+        },
+        {
+          id: "team-damage-share",
+          topic: "damage-econ",
+          name: "Team Damage %",
+          source: "Derived",
+          explain:
+            "Share of total team damage you contributed. Shows if you were a primary/secondary carry.",
+          calc: "Player Damage / Team Damage × 100.",
+          sample: "Example: 27% means over a quarter of your team’s damage.",
+        },
+        {
+          id: "damage-to-objectives",
+          topic: "damage-econ",
+          name: "Damage to Objectives & Turrets",
+          source: "Match",
+          explain:
+            "How much you chipped away towers, dragons, barons, etc. Measures structural impact.",
+          calc: "Raw objective/tower damage, used inside Objective Kills & conversion metrics.",
+          sample: "Example: 3,635 to objectives, 2,569 to turrets (Illaoi).",
+        },
+
+        // ================= OBJECTIVES =================
+        {
+          id: "first-dragon-team",
+          topic: "objectives",
+          name: "First Dragon (Team)",
+          source: "Match (Team Row)",
+          explain:
+            "Whether your team secured the first drake. Strong tempo indicator on many patches.",
+          calc: "Boolean TRUE/FALSE from team stats; used for winrate splits & priorities.",
+          sample: "Example: TRUE in sample = Les Nübs got first dragon.",
+        },
+        {
+          id: "first-herald-team",
+          topic: "objectives",
+          name: "First Herald (Team)",
+          source: "Match (Team Row)",
+          explain:
+            "Tracks if you secured the first Rift Herald, often converting into plates & tempo.",
+          calc: "Boolean; combined with Herald Kills and tower outcomes.",
+          sample: "Example: TRUE in sample match.",
+        },
+        {
+          id: "first-baron-team",
+          topic: "objectives",
+          name: "First Baron (Team)",
+          source: "Match (Team Row)",
+          explain:
+            "If you claimed the first Baron. Usually tied to closing or turning games.",
+          calc: "Boolean; heavily weighted in Objective Impact models.",
+          sample: "Example: FALSE in sample = enemy secured first Baron.",
+        },
+        {
+          id: "dragon-participation",
+          topic: "objectives",
+          name: "Dragon / Herald / Baron Participation",
+          source: "Derived per player",
+          explain:
+            "How often a player is present & contributing when the team takes major objectives.",
+          calc:
+            "For each objective taken, check if player is nearby/assisting; compute participation rate.",
+          sample:
+            "Example: 100% Dragon Participation = present on every team drake in that game.",
+        },
+        {
+          id: "objective-kills",
+          topic: "objectives",
+          name: "Objective Kills",
+          source: "Derived per player",
+          explain:
+            "Last-hits or major contributions on epic monsters/structures. Feeding into macro scores.",
+          calc:
+            "Count of credited objective takedowns (drakes, heralds, barons, towers, inhibs).",
+          sample: "Example: 3 objective kills (Jungle Viego in sample).",
+        },
+        {
+          id: "objective-conversion-rate",
+          topic: "objectives",
+          name: "Objective Conversion Rate",
+          source: "Derived (Team)",
+          explain:
+            "How often you turn leads (kills/gold/pressure) into tangible objectives.",
+          calc:
+            "Objectives taken after windows of advantage / total advantage windows. Used in macro indices.",
+          sample: "Higher % = disciplined team that cashes in leads.",
+        },
+
+        // ================= TEAMFIGHTS & SYNERGY =================
+        {
+          id: "teamfights-won",
+          topic: "teamfight",
+          name: "Teamfights Won & Win Rate",
+          source: "Derived (Team)",
+          explain:
+            "How many tracked 5v5/4v4 fights you win, and your win rate in those sequences.",
+          calc:
+            "Flagged via damage + death windows. Teamfight Win Rate = fights won / fights taken.",
+          sample: "Example: 7 wins / 9 fights → 77.8% TF win rate.",
+        },
+        {
+          id: "synergy-index",
+          topic: "teamfight",
+          name: "Synergy Index",
+          source: "Derived",
+          explain:
+            "Measures how well players connect in kills, assists, and shared objectives.",
+          calc:
+            "Blend of shared kill participation, assist chains, objective co-participation.",
+          sample: "Higher = players consistently impacting plays together.",
+        },
+        {
+          id: "shared-participation",
+          topic: "teamfight",
+          name: "Shared Participation Rate",
+          source: "Derived",
+          explain:
+            "How often two players are involved in the same successful plays.",
+          calc:
+            "Co-participation in kills/objectives between a duo / their total plays.",
+          sample:
+            "Used in Team Synergy card to highlight strong duos and stable cores.",
+        },
+        {
+          id: "team-coordination",
+          topic: "teamfight",
+          name: "Team Coordination Efficiency",
+          source: "Derived",
+          explain:
+            "Are we entering fights together, or staggered and doomed?",
+          calc:
+            "Timing spread of joins to fights, participation overlap, objective follow-ups.",
+          sample:
+            "High score = cleaner 5-man setups; low score = coinflip, staggered engages.",
+        },
+
+        // ================= MACRO & ADVANCED INDICES =================
+        {
+          id: "tempo-efficiency",
+          topic: "macro-advanced",
+          name: "Tempo Efficiency Index",
+          source: "Derived",
+          explain:
+            "How well the team uses time: early moves, rotations, resets, and objective setup.",
+          calc:
+            "Combines early gold lead timings, first moves, cross-map trades, delayed recalls.",
+          sample:
+            "High values in wins vs low in losses = you are a tempo-reliant team.",
+        },
+        {
+          id: "macro-strength",
+          topic: "macro-advanced",
+          name: "Macro Strength Index",
+          source: "Derived",
+          explain:
+            "Overall quality of map decisions: cross-map trades, wave control, objective sequencing.",
+          calc:
+            "Weighted mix of Objective Control, Conversion Rate, Tower/Baron control, & Tempo.",
+          sample:
+            "Used heavily in Total Player Impact & Team Synergy views.",
+        },
+        {
+          id: "macro-consistency",
+          topic: "macro-advanced",
+          name: "Macro Consistency",
+          source: "Derived",
+          explain:
+            "How repeatable your macro is across games. Do you follow your win conditions or coinflip?",
+          calc:
+            "Variance of key macro stats game-to-game. Lower volatility with good results = higher score.",
+          sample: "High score = reliable identity. Low = chaotic, streaky team.",
+        },
+        {
+          id: "clutch-index",
+          topic: "macro-advanced",
+          name: "Clutch Index",
+          source: "Derived",
+          explain:
+            "Measures performance in high-pressure windows (Baron fights, Elder, base defenses).",
+          calc:
+            "Result of key fights & decisions after 25+ minutes or at tight gold margins.",
+          sample: "Positive = often win the big moments.",
+        },
+        {
+          id: "carry-impact",
+          topic: "macro-advanced",
+          name: "Carry Impact Score",
+          source: "Derived (Per Player)",
+          explain:
+            "How much a player functioned as a win condition across games (damage, gold, DPM, KP).",
+          calc:
+            "Blend of DPM, damage share, gold share, KP, KDA, weighted by role expectations.",
+          sample:
+            "Shown in Total Player Impact details as part of individual composite.",
+        },
+        {
+          id: "support-impact",
+          topic: "macro-advanced",
+          name: "Support Impact Score",
+          source: "Derived (Per Player)",
+          explain:
+            "Impact for supports beyond raw KDA: vision, setups, peel, objective presence.",
+          calc:
+            "Vision stats, CC, objective participation, coordination, protection events.",
+          sample: "Lets tank engage supports look good without 30k damage.",
+        },
+        {
+          id: "jungle-efficiency",
+          topic: "macro-advanced",
+          name: "Jungle Efficiency Score",
+          source: "Derived (Per Player)",
+          explain:
+            "Pathing, farm, gank impact, objective control, and tempo relative to game state.",
+          calc:
+            "Early objective influence, farm vs time, lane impact, vision & Atakhan/Void control (if present).",
+          sample:
+            "Used only for jungle roles in TPI, scaled vs teammates.",
+        },
+      ];
+
+      // Render function
+      const grid = document.getElementById("metrics-grid");
+
+      function createMetricCard(m) {
+        return `
+          <div
+            class="metric-card dashboard-card !p-3 text-[0.7rem] flex flex-col gap-1.5 border border-gray-100"
+            data-topic="${m.topic}"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-[0.8rem] font-semibold text-gray-900">
+                ${m.name}
+              </h3>
+              <span class="px-2 py-0.5 rounded-full text-[0.55rem] text-gray-500 bg-gray-50 border border-gray-100">
+                ${topicLabel(m.topic)}
+              </span>
+            </div>
+            <p class="text-gray-700 leading-snug">
+              ${m.explain}
+            </p>
+            <p class="text-[0.65rem] text-gray-500">
+              <span class="font-semibold text-gray-700">How we calculate it:</span>
+              ${m.calc}
+            </p>
+            <p class="text-[0.65rem] text-orange-500">
+              <span class="font-semibold">Sample:</span> ${m.sample}
+            </p>
+            <p class="text-[0.55rem] text-gray-400 mt-0.5">
+              Source: ${m.source}
+            </p>
+          </div>
+        `;
+      }
+
+      function topicLabel(topic) {
+        switch (topic) {
+          case "core": return "Core";
+          case "vision": return "Vision";
+          case "damage-econ": return "Damage & Econ";
+          case "objectives": return "Objectives";
+          case "teamfight": return "Teamfights & Synergy";
+          case "macro-advanced": return "Macro & Indices";
+          default: return "Metric";
+        }
+      }
+
+      function renderAllMetrics() {
+        grid.innerHTML = metrics.map(createMetricCard).join("");
+      }
+
+      renderAllMetrics();
+
+      // Filter logic
+      const filterButtons = document.querySelectorAll(".metric-filter-btn");
+
+      filterButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const topic = btn.getAttribute("data-topic") || "all";
+
+          // active style
+          filterButtons.forEach((b) => {
+            b.classList.remove(
+              "bg-orange-500",
+              "text-white",
+              "border-orange-500",
+              "shadow-sm"
+            );
+            b.classList.add("bg-white", "text-gray-700", "border-gray-200");
+          });
+
+          if (topic === "all") {
+            btn.classList.add(
+              "bg-orange-500",
+              "text-white",
+              "border-orange-500",
+              "shadow-sm"
+            );
+            btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
+          } else {
+            btn.classList.add(
+              "bg-orange-500",
+              "text-white",
+              "border-orange-500",
+              "shadow-sm"
+            );
+            btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
+          }
+
+          // show / hide cards
+          document.querySelectorAll(".metric-card").forEach((card) => {
+            const t = card.getAttribute("data-topic");
+            if (topic === "all" || t === topic) {
+              card.classList.remove("hidden");
+            } else {
+              card.classList.add("hidden");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
