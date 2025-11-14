@@ -2,8 +2,13 @@
 const SHEET_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?gid=331200910&single=true&output=csv";
 
+const TIMELINE_SHEET_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRbb898Zhxeml0wxUIeXQk33lY3eVDqIGepE7iEiHA0KQNMQKvQWedA4WMaKUXBuhKfrPjalVb-OvD9/pub?gid=1195101739&single=true&output=csv";
+
+
 let trendWindow = 10; // Default trend window
 let cachedRows = null; // Cached CSV data for faster re-renders
+let cachedTimelineRows = null; // 🔹 add this: timeline cache
 
 // --- Default Player Avatars ---
 const basePlayers = [
@@ -13,6 +18,7 @@ const basePlayers = [
   { name: "denotes", svg: "assets/avatars/ota.svg", color: "#a855f7" },
   { name: "Burningelf", svg: "assets/avatars/achten.svg", color: "#f59e0b" },
   { name: "HH", svg: "assets/avatars/hh.svg", color: "#ef4444" },
+  { name: "Emorek",    svg: "assets/avatars/emorek.svg",    color: "#0ea5e9" }, // NEW
 ];
 
 let players = [...basePlayers];
@@ -132,6 +138,37 @@ async function loadData() {
   }
 }
 
+// --- LOAD TIMELINE DATA (lane-by-lane, per minute) ---
+async function loadTimelineData() {
+  if (cachedTimelineRows) return cachedTimelineRows;
+
+  try {
+    const res = await fetch(TIMELINE_SHEET_URL);
+    if (!res.ok) throw new Error(`Timeline HTTP ${res.status}`);
+
+    const csv = await res.text();
+    const parsed = Papa.parse(csv, { header: true, skipEmptyLines: true });
+
+    cachedTimelineRows = parsed.data.map((row) => {
+      const clean = {};
+      for (const key in row) {
+        if (!key) continue;
+        const normalized = key.trim().replace(/\s+/g, " ");
+        clean[normalized] =
+          typeof row[key] === "string" ? row[key].trim() : row[key];
+      }
+      return clean;
+    });
+
+    console.log("✅ Timeline loaded:", cachedTimelineRows.length, "rows");
+    return cachedTimelineRows;
+  } catch (err) {
+    console.error("❌ loadTimelineData error:", err);
+    return null;
+  }
+}
+
+
 // --- HELPER: Render all dashboard parts (Safe + Debug Logging) ---
 function renderAllSections(rows) {
   if (!rows || !rows.length) return;
@@ -178,11 +215,26 @@ function renderAllSections(rows) {
 safeRender("renderSummary", renderSummary, [splits["Season 25"]]);
 safeRender("renderObjectiveImpact", renderObjectiveImpact, [splits["Season 25"]]);
 safeRender("renderTeamSynergy", typeof renderTeamSynergy !== "undefined" ? renderTeamSynergy : null, [splits["Season 25"]]);
+  // --- Lane Dynamics (uses timeline sheet) ---
+  if (typeof renderLaneDynamics !== "undefined") {
+    if (cachedTimelineRows) {
+      safeRender("renderLaneDynamics", renderLaneDynamics, [splits["Season 25"], cachedTimelineRows]);
+    } else {
+      loadTimelineData()
+        .then((timeline) => {
+          if (timeline && timeline.length) {
+            safeRender("renderLaneDynamics", renderLaneDynamics, [splits["Season 25"], timeline]);
+          }
+        })
+        .catch((err) => console.error("❌ Lane Dynamics render error:", err));
+    }
+  }
 // safeRender("renderPerformanceImpact", renderPerformanceImpact, [splits["Season 25"]]);
 safeRender("renderOverview", typeof renderOverview !== "undefined" ? renderOverview : null, [splits["Season 25"]]);
 //safeRender("renderTrends", renderTrends, [splits["Season 25"]]);
 safeRender("renderSplits", renderSplits, [splits]);
 safeRender("renderCharacterSelect", renderCharacterSelect, []);
+
 
 
 
@@ -253,11 +305,12 @@ function calcStats(data) {
 }
 
 // ============================================================================
-// 📊 SEASON 25 SUMMARY — v3.0
-// - Uses unified game ID detection
-// - Correct "Current Split" via max(Split) for Les Nübs
-// - Blue/Red/Overall Winrate inside this card
-// - Fun facts minis: Pink wards, Vision, Damage
+// 📊 SEASON 25 SUMMARY — v3.1.2
+// - Correct Kill Participation scaling
+// - Adds "Most Played Champions (Top 5)" mini card
+// - Fixes Season button label
+// - Restores side winrate logic to previous working version
+// - NEW: Blue/Red side winrate values are colored (blue/red)
 // Renders into #season-summary
 // ============================================================================
 
@@ -316,7 +369,7 @@ function renderSummary(data) {
       }
     }
 
-    // ---------- Season & Split detection (from our team rows if possible) ----------
+    // ---------- Season & Split detection ----------
     const ourRowsAll = data.filter(isOurTeam);
     const seasonSource = ourRowsAll.length ? ourRowsAll : data;
 
@@ -337,9 +390,7 @@ function renderSummary(data) {
 
     // ---------- Trend window filtering ----------
     const getRecentGames = (n) => {
-      const allGames = data
-        .map((r) => getGameId(r))
-        .filter(Boolean);
+      const allGames = data.map((r) => getGameId(r)).filter(Boolean);
       const uniqueGames = [...new Set(allGames)];
       const recentGames = uniqueGames.slice(-n);
       return data.filter((r) => recentGames.includes(getGameId(r)));
@@ -372,7 +423,9 @@ function renderSummary(data) {
     const rowsForStats = filteredOur.length ? filteredOur : filteredData;
 
     // ---------- Unique games ----------
-    const games = [...new Set(rowsForStats.map((r) => getGameId(r) || r["Date"]))];
+    const games = [...new Set(
+      rowsForStats.map((r) => getGameId(r) || r["Date"])
+    )];
     const totalGames = games.length;
 
     // ---------- Winrate ----------
@@ -386,7 +439,7 @@ function renderSummary(data) {
     const winrate =
       totalGames > 0 ? ((wins / totalGames) * 100).toFixed(1) : "0.0";
 
-    // ---------- Side Winrates (same philosophy as TPI card, but from our rows) ----------
+    // ---------- Side Winrates (restored logic) ----------
     const matchMap = new Map();
     rowsForStats.forEach((r) => {
       const id = getGameId(r);
@@ -394,19 +447,16 @@ function renderSummary(data) {
       matchMap.set(id, r);
     });
     const uniqueMatches = Array.from(matchMap.values());
-    const sideGamesTotal = uniqueMatches.length || 1;
 
     const blueGames = uniqueMatches.filter((r) => {
       const side = String(r["Team Side"] || "").toLowerCase();
       const winningTeam = parseInt(r["Winning Team"]);
-      // our side is blue if Team Side says so OR if our team is 100 in data convention
       return side.includes("blue") || winningTeam === 100;
     });
 
     const redGames = uniqueMatches.filter((r) => {
       const side = String(r["Team Side"] || "").toLowerCase();
       const winningTeam = parseInt(r["Winning Team"]);
-      // our side is red if Team Side says so OR if our team is 200 in data convention
       return side.includes("red") || winningTeam === 200;
     });
 
@@ -423,15 +473,6 @@ function renderSummary(data) {
     const redWinrate = redGames.length
       ? ((redWins / redGames.length) * 100).toFixed(1)
       : "0.0";
-
-    const overallSideWinrate =
-      sideGamesTotal > 0
-        ? (
-            (blueWins + redWins) /
-            sideGamesTotal *
-            100
-          ).toFixed(1)
-        : "0.0";
 
     // ---------- Basic team stats ----------
     const totalKills = rowsForStats.reduce(
@@ -454,31 +495,37 @@ function renderSummary(data) {
         ? "∞"
         : "0.00";
 
-    // Kill participation: average per game across our players
+    // ---------- Kill Participation (fixed scaling) ----------
     const matchGroups = {};
     rowsForStats.forEach((r) => {
       const id = getGameId(r);
       if (!id) return;
-      const raw = toNum(r["Kill Part %"]) || 0;
+
+      let raw = toNum(r["Kill Part %"]);
+      if (!raw) return;
+
+      // If data is stored as 0.26, 0.70 etc; convert to 26, 70
+      if (raw > 0 && raw <= 1.01) {
+        raw = raw * 100;
+      }
+
       if (!matchGroups[id]) matchGroups[id] = [];
-      if (raw > 0) matchGroups[id].push(raw);
+      matchGroups[id].push(raw);
     });
 
-    const avgKP = Object.values(matchGroups).length
+    const avgKP = Object.keys(matchGroups).length
       ? (
           Object.values(matchGroups)
-            .map((arr) =>
-              arr.reduce((a, b) => a + b, 0) / arr.length
-            )
+            .map((arr) => arr.reduce((a, b) => a + b, 0) / arr.length)
             .reduce((a, b) => a + b, 0) /
-          Object.values(matchGroups).length
+          Object.keys(matchGroups).length
         ).toFixed(1)
       : "0.0";
 
-    // Avg game time (minutes)
+    // ---------- Avg game time (minutes) ----------
     const timeValues = rowsForStats
       .map((r) => {
-        const t = String(r["TIME"] || "").trim();
+        const t = String(r["TIME"] || r["Game Time"] || "").trim();
         if (!t) return NaN;
         if (t.includes(":")) {
           const [m, s] = t.split(":").map((v) => +v || 0);
@@ -493,7 +540,7 @@ function renderSummary(data) {
       ? (timeValues.reduce((a, b) => a + b, 0) / timeValues.length).toFixed(1)
       : "—";
 
-    // ---------- Streaks (by match) ----------
+    // ---------- Streaks ----------
     const sortedGames = [...games].sort();
     let bestWin = 0,
       bestLoss = 0,
@@ -582,8 +629,8 @@ function renderSummary(data) {
       return { label, total, footer };
     });
 
-    // ---------- Fun Fact Minis (our team only) ----------
-    const funRows = rowsForStats; // already our team if available
+    // ---------- Fun Fact Minis ----------
+    const funRows = rowsForStats;
 
     let mostPink = { value: 0, player: "—" };
     let highestVision = { value: 0, player: "—" };
@@ -611,12 +658,46 @@ function renderSummary(data) {
       }
     });
 
+    // ---------- Most Played Champions (Top 5) ----------
+    const champGameMap = {};
+
+    funRows.forEach((r) => {
+      const champ = String(r["Champion"] || r["Champ"] || "").trim();
+      const gid = getGameId(r);
+      if (!champ || !gid) return;
+      if (!champGameMap[champ]) champGameMap[champ] = new Set();
+      champGameMap[champ].add(gid);
+    });
+
+    const topChamps = Object.entries(champGameMap)
+      .map(([champ, set]) => ({ champ, games: set.size }))
+      .sort((a, b) => b.games - a.games || a.champ.localeCompare(b.champ))
+      .slice(0, 5);
+
+    const mostPlayedFooter =
+      topChamps.length
+        ? `<div class="space-y-0.5 text-xs text-gray-600">
+             ${topChamps
+               .map(
+                 (c, i) =>
+                   `<div>${i + 1}. ${c.champ} <span class="text-gray-400">(${c.games})</span></div>`
+               )
+               .join("")}
+           </div>`
+        : `<span class="text-xs text-gray-400">No champion data</span>`;
+
     // ---------- Header buttons ----------
-    const trendButtons = `
-      <div class="flex gap-1 text-xs font-medium">
-        ${["5", "10", "split", "season"]
-          .map(
-            (w) => `
+  const trendButtons = `
+  <div class="flex gap-1 text-xs font-medium">
+    ${["5", "10", "split", "season"]
+      .map((w) => {
+        const label =
+          w === "5" ? "5 Games" :
+          w === "10" ? "10 Games" :
+          w === "split" ? "Current Split" :
+          `Season ${currentSeason}`; // <-- use template literal here
+
+        return `
           <button
             class="px-2.5 py-1 rounded-md border transition
               ${
@@ -625,25 +706,17 @@ function renderSummary(data) {
                   : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"
               }"
             data-summary-window="${w}">
-            ${
-              w === "5"
-                ? "5 Games"
-                : w === "10"
-                ? "10 Games"
-                : w === "split"
-               ? "Current Split"
-              : "Season " + currentSeason
+            ${label}
+          </button>`;
+      })
+      .join("")}
+  </div>`;
 
-            }
-          </button>`
-          )
-          .join("")}
-      </div>`;
 
     // ---------- Build HTML ----------
     document.getElementById("season-summary").innerHTML = `
       <section class="section-wrapper fade-in mb-10">
-        <div class="dashboard-card text-center">
+        <div class="dashboard-card text-center bg-white shadow-sm rounded-2xl border border-orange-50">
           <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
             <h2 class="text-[1.1rem] font-semibold text-orange-500 tracking-tight">
               Season ${currentSeason} Summary
@@ -662,14 +735,14 @@ function renderSummary(data) {
 
           <!-- Side Winrates + Streak + Last Updated -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            ${renderMiniCard("Blue Side Winrate", `${blueWinrate}%`)}
-            ${renderMiniCard("Red Side Winrate", `${redWinrate}%`)}
+            ${renderMiniCard("Blue Side Winrate", `${blueWinrate}%`, "text-lg font-semibold text-sky-600")}
+            ${renderMiniCard("Red Side Winrate", `${redWinrate}%`, "text-lg font-semibold text-rose-600")}
             ${renderMiniCard(streakLabel, `${streakCount || 0} Games`)}
             ${renderMiniCard("Last Updated", staticLastUpdated, "text-sm")}
           </div>
 
-          <!-- Fun Fact Minis -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+          <!-- Fun Facts + Most Played Champions -->
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-6">
             ${renderMiniCard(
               "Most Pink Wards in a Game",
               mostPink.value ? mostPink.value : "—",
@@ -696,6 +769,12 @@ function renderSummary(data) {
                 ? `<span class="text-xs text-gray-500">by ${highestDamage.player}</span>`
                 : `<span class="text-xs text-gray-400">No data</span>`
             )}
+            ${renderMiniCard(
+              "Most Played Champions (Top 5)",
+              topChamps.length ? "Top picks" : "—",
+              "text-xs font-semibold text-gray-600",
+              mostPlayedFooter
+            )}
           </div>
 
           <!-- Kill Breakdown -->
@@ -720,9 +799,7 @@ function renderSummary(data) {
       .querySelectorAll("[data-summary-window]")
       .forEach((btn) => {
         btn.addEventListener("click", () => {
-          summaryTrendWindow = btn.getAttribute(
-            "data-summary-window"
-          );
+          summaryTrendWindow = btn.getAttribute("data-summary-window");
           renderSummary(data);
         });
       });
@@ -741,7 +818,7 @@ function renderMiniCard(
   return `
     <div class="p-4 rounded-2xl bg-white shadow-sm border border-gray-100 text-left flex flex-col justify-between">
       <div>
-        <div class="text-gray-500 text-sm mb-1">${label}</div>
+        <div class="text-gray-500 text-xs mb-1">${label}</div>
         <div class="${valueClass} text-gray-800">${value}</div>
       </div>
       <div class="mt-1">${footer}</div>
@@ -753,14 +830,12 @@ function renderMiniCard(
 
 
 
-
 // ============================================================================
-// ⭐ TOTAL PLAYER IMPACT — v1.0
-// One unified individual score:
-// - 55% Individual performance (lane, damage, carry, discipline)
-// - 45% Objective & macro impact (vision, tempo, conversion, participation)
-// - Role-scaled, sample-size adjusted, guest handling
-// - Per-player strengths & focus tips with player selection
+// ⭐ TOTAL PLAYER IMPACT — v1.0 (UI Refined)
+// - All calculations & weighting unchanged
+// - Cleaner card layout aligned with other dashboard sections
+// - No extra objective/side mini-cards inside this card
+// - Season label normalized to avoid "Season Season 25"
 // Renders into #objective-impact
 // ============================================================================
 
@@ -808,6 +883,18 @@ function renderObjectiveImpact(data) {
     ? seasons[seasons.length - 1]
     : "2025";
 
+  // Normalize for label (avoid "Season Season 25")
+  const currentSeasonLabel = (() => {
+    const s = String(currentSeason || "").trim();
+    if (!s) return "Season";
+    const lower = s.toLowerCase();
+    if (lower.startsWith("season")) {
+      const num = s.replace(/[^0-9]/g, "");
+      return num ? `Season ${num}` : s;
+    }
+    return `Season ${s}`;
+  })();
+
   const splitSource = ourRowsAll.length ? ourRowsAll : data;
   const splitNums = splitSource
     .map((r) => normSplitNum(r["Split"]))
@@ -853,7 +940,7 @@ function renderObjectiveImpact(data) {
       (k) => k in (filteredData[0] || {})
     ) || "Game #";
 
-  // ---------- One row per match for team-level objective view ----------
+  // ---------- One row per match for team-level view ----------
   const matchMap = new Map();
   filteredData.forEach((r) => {
     const id = getGameId(r);
@@ -863,7 +950,7 @@ function renderObjectiveImpact(data) {
   const uniqueMatches = Array.from(matchMap.values());
   const totalGames = uniqueMatches.length || 1;
 
-  // ---------- Winrate overview ----------
+  // ---------- Winrates (kept for context; not rendered as mini-cards here) ----------
   const wins = uniqueMatches.filter(
     (r) => String(r["Result"]).toLowerCase() === "win"
   ).length;
@@ -894,7 +981,7 @@ function renderObjectiveImpact(data) {
     ? (redWins / redGames.length) * 100
     : 0;
 
-  // ---------- Objective mini cards ----------
+  // ---------- Objective summary (unchanged calculations; stored for trends) ----------
   const calcObjective = (killsKey, firstKey, emoji, label) => {
     const controlGames = uniqueMatches.filter(
       (r) =>
@@ -951,42 +1038,7 @@ function renderObjectiveImpact(data) {
     ),
   ];
 
-  const objectiveHTML = `
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6 fade-in delay-1">
-      ${objectiveCards
-        .map(
-          (o) => `
-        <div class="dashboard-card p-4 text-sm text-gray-700">
-          <div class="flex justify-between items-center mb-1">
-            <span class="font-semibold text-gray-800">${o.emoji} ${o.label}</span>
-            <span class="${
-              o.delta > 0
-                ? "text-emerald-600"
-                : o.delta < 0
-                ? "text-red-600"
-                : "text-gray-400"
-            } text-xs">
-              ${
-                o.delta === 0
-                  ? "•"
-                  : (o.delta > 0 ? "▲" : "▼") +
-                    Math.abs(o.delta).toFixed(1)
-              }
-            </span>
-          </div>
-          <p class="text-xs text-gray-500">Control: ${o.control.toFixed(
-            1
-          )}%</p>
-          <p class="text-xs text-gray-500">Winrate: ${o.winrate.toFixed(
-            1
-          )}%</p>
-        </div>
-      `
-        )
-        .join("")}
-    </div>`;
-
-  // ---------- Adaptive Objective Weights (AOW) ----------
+  // ---------- Adaptive Objective Weights (unchanged) ----------
   const objectivesList = [
     "Dragon",
     "Herald",
@@ -1067,7 +1119,7 @@ function renderObjectiveImpact(data) {
     (k) => (objWeights[k] = objWeights[k] / totalW)
   );
 
-  // ---------- Per-player aggregation ----------
+  // ---------- Per-player aggregation (unchanged) ----------
   const playerStats = {};
   const roleFrequency = {};
 
@@ -1109,7 +1161,6 @@ function renderObjectiveImpact(data) {
 
     if (matchId) s.gamesSet.add(matchId);
 
-    // macro/objective metrics bucket
     const metrics = [
       "Objective Control Balance",
       "Objective Conversion Rate",
@@ -1187,7 +1238,6 @@ function renderObjectiveImpact(data) {
     s.carrySum += carry;
     s.perfRatingSum += pr;
 
-    // role frequency
     if (!roleFrequency[name]) roleFrequency[name] = {};
     if (role) {
       roleFrequency[name][role] =
@@ -1195,14 +1245,12 @@ function renderObjectiveImpact(data) {
     }
   });
 
-  // ---------- Build per-player metrics ----------
   let playerStatsArr = Object.entries(playerStats).map(
     ([name, s]) => {
       const games = s.gamesSet.size || 1;
       const avg = (key) =>
         (s.totals[key] || 0) / games;
 
-      // Macro / objective groups
       const control =
         (avg("Objective Control Balance") +
           avg("Baron Control %") +
@@ -1215,7 +1263,6 @@ function renderObjectiveImpact(data) {
           avg("Early Objective Ratio")) /
         3;
 
-      // AOW-weighted participation
       const participation =
         avg("Dragon Participation") * (objWeights.Dragon || 0) +
         avg("Herald Participation") * (objWeights.Herald || 0) +
@@ -1253,7 +1300,6 @@ function renderObjectiveImpact(data) {
           avg("Momentum Stability")) /
         6;
 
-      // Individual metrics (per game averages)
       const killsPg = s.kills / games;
       const deathsPg = s.deaths / games;
       const assistsPg = s.assists / games;
@@ -1284,16 +1330,12 @@ function renderObjectiveImpact(data) {
         name,
         role: s.role,
         games,
-
-        // macro groups
         control,
         conversion,
         participation,
         vision,
         tempo,
         consistency,
-
-        // indiv summary
         indiv: {
           avgKDA,
           avgKP,
@@ -1311,7 +1353,6 @@ function renderObjectiveImpact(data) {
           killsPg,
           assistsPg,
         },
-
         impact: 0,
         delta: 0,
       };
@@ -1341,7 +1382,6 @@ function renderObjectiveImpact(data) {
     return invert ? 1 - x : x;
   };
 
-  // macro groups
   const mmControl = buildMinMax(
     playerStatsArr.map((p) => p.control)
   );
@@ -1361,7 +1401,6 @@ function renderObjectiveImpact(data) {
     playerStatsArr.map((p) => p.consistency)
   );
 
-  // indiv metrics
   const mmKDA = buildMinMax(
     playerStatsArr.map((p) => p.indiv.avgKDA)
   );
@@ -1402,9 +1441,8 @@ function renderObjectiveImpact(data) {
     playerStatsArr.map((p) => p.indiv.avgPerfRating)
   );
 
-  // ---------- Role-weighted composites (macro + indiv) ----------
+  // ---------- Role-weighted composites ----------
   playerStatsArr = playerStatsArr.map((p) => {
-    // role mix
     const freq = roleFrequency[p.name] || {};
     let roleFractions = Object.entries(freq);
     const totalGamesRole = roleFractions.reduce(
@@ -1429,7 +1467,6 @@ function renderObjectiveImpact(data) {
       roleFractions.filter(([, share]) => share >= 0.2)
         .length >= 2;
 
-    // stable main role gets slight boost
     const ampMin = 0.05;
     const ampMax = 0.2;
     const amplification =
@@ -1518,7 +1555,6 @@ function renderObjectiveImpact(data) {
       }
     );
 
-    // normalized macro groups
     const nControl = norm(p.control, mmControl);
     const nConv = norm(p.conversion, mmConversion);
     const nPart = norm(p.participation, mmPart);
@@ -1534,7 +1570,6 @@ function renderObjectiveImpact(data) {
       blended.tempo * nTempo +
       blended.consistency * nCons;
 
-    // normalized individual metrics
     const I = p.indiv;
     const nKDA = norm(I.avgKDA, mmKDA);
     const nKP = norm(I.avgKP, mmKP);
@@ -1557,7 +1592,7 @@ function renderObjectiveImpact(data) {
       I.deathsPg,
       mmDeaths,
       true
-    ); // lower deaths = better
+    );
     const nMech = norm(
       I.avgMech,
       mmMech
@@ -1660,25 +1695,25 @@ function renderObjectiveImpact(data) {
     };
   });
 
-  // sort: real samples first, guests after
   playerStatsArr.sort((a, b) => {
     if (a.isGuest !== b.isGuest)
       return a.isGuest ? 1 : -1;
     return b.impact - a.impact;
   });
 
-  // ---------- UI pieces ----------
+  // ---------- UI: header + filters ----------
   const trendButtons = `
-    <div class="flex gap-2 text-sm">
-      ${["5","10","split","season"]
+    <div class="flex gap-1 text-xs font-medium">
+      ${["5", "10", "split", "season"]
         .map(
           (w) => `
         <button
-          class="px-3 py-1 rounded-lg border ${
-            objectiveTrendWindow === w
-              ? "bg-orange-500 text-white border-orange-500"
-              : "bg-white text-gray-700 border-gray-300 hover:bg-orange-50"
-          } transition"
+          class="px-2.5 py-1 rounded-md border transition
+            ${
+              objectiveTrendWindow === w
+                ? "bg-orange-500 text-white border-orange-500"
+                : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"
+            }"
           data-window="${w}">
           ${
             w === "5"
@@ -1687,103 +1722,82 @@ function renderObjectiveImpact(data) {
               ? "10 Games"
               : w === "split"
               ? "Current Split"
-              : "Season ${currentSeason}"
+              : currentSeasonLabel
           }
         </button>`
         )
         .join("")}
     </div>`;
 
-  const sideHTML = `
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-5 fade-in delay-1">
-      <div class="dashboard-card p-4 text-center">
-        <p class="text-xs text-gray-500 font-medium mb-1">Blue Side Winrate</p>
-        <p class="text-xl font-bold text-blue-600">${blueWinrate.toFixed(
-          1
-        )}%</p>
-      </div>
-      <div class="dashboard-card p-4 text-center">
-        <p class="text-xs text-gray-500 font-medium mb-1">Red Side Winrate</p>
-        <p class="text-xl font-bold text-red-600">${redWinrate.toFixed(
-          1
-        )}%</p>
-      </div>
-      <div class="dashboard-card p-4 text-center">
-        <p class="text-xs text-gray-500 font-medium mb-1">Overall Winrate</p>
-        <p class="text-xl font-bold text-gray-800">${overallWinrate.toFixed(
-          1
-        )}%</p>
-      </div>
+  // ---------- UI: table (alignment fixed) ----------
+  const tableHTML = `
+    <div class="mt-4 overflow-x-auto">
+      <table class="w-full border-collapse text-sm">
+        <thead>
+          <tr class="bg-gray-50 text-gray-600">
+            <th class="px-4 py-2 text-left font-semibold">Player</th>
+            <th class="px-4 py-2 text-right font-semibold">Total Impact</th>
+            <th class="px-4 py-2 text-right font-semibold">Δ</th>
+            <th class="px-4 py-2 text-right font-semibold">Games</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${playerStatsArr
+            .map(
+              (p) => `
+            <tr data-player="${p.name}"
+                data-player-stat="${p.name}"
+                class="hover:bg-orange-50 transition cursor-pointer">
+              <td class="px-4 py-2 align-middle">
+                <span class="font-medium text-gray-900">${p.name}</span>
+                <span class="text-xs text-gray-500 ml-1">
+                  (${p.mainRole}${p.isFlex ? ", flex" : ""}${p.isGuest ? ", guest" : ""})
+                </span>
+                ${
+                  p.isGuest
+                    ? `<span class="ml-1 text-yellow-500" title="Low sample size — treated as guest.">⭐</span>`
+                    : ""
+                }
+              </td>
+              <td class="px-4 py-2 text-right align-middle ${
+                p.impact >= 75
+                  ? "text-emerald-600"
+                  : p.impact >= 60
+                  ? "text-yellow-600"
+                  : "text-red-600"
+              } font-semibold">
+                ${p.impact.toFixed(0)}
+              </td>
+              <td class="px-4 py-2 text-right align-middle text-xs ${
+                p.delta > 0.8
+                  ? "text-emerald-600"
+                  : p.delta < -0.8
+                  ? "text-red-600"
+                  : "text-gray-400"
+              }">
+                ${
+                  typeof p.delta !== "number"
+                    ? "•"
+                    : p.delta > 0.8
+                    ? `▲${p.delta.toFixed(1)}`
+                    : p.delta < -0.8
+                    ? `▼${Math.abs(p.delta).toFixed(1)}`
+                    : "•"
+                }
+              </td>
+              <td class="px-4 py-2 text-right align-middle text-gray-600">
+                ${p.games}
+              </td>
+            </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
     </div>`;
 
-  const tableHTML = `
-    <table class="table-clean mt-6 fade-in delay-2">
-      <thead>
-        <tr>
-          <th>Player</th>
-          <th class="text-right">Total Impact</th>
-          <th class="text-right">Δ</th>
-          <th class="text-right">Games</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${playerStatsArr
-          .map(
-            (p) => `
-          <tr data-player="${p.name}" data-player-stat="${p.name}" class="cursor-pointer hover:bg-orange-50 transition">
-            <td class="tooltip">
-              ${p.name}
-              <span class="text-xs text-gray-500">
-                (${p.mainRole}${
-              p.isFlex ? ", flex" : ""
-            }${p.isGuest ? ", guest" : ""})
-              </span>
-              ${
-                p.isFlex
-                  ? `<span class="tooltip-text">Role mix: ${p.roleMix}</span>`
-                  : ""
-              }
-              ${
-                p.isGuest
-                  ? `<span class="ml-1 text-yellow-500" title="Low sample size — treated as guest.">⭐</span>`
-                  : ""
-              }
-            </td>
-            <td class="text-right ${
-              p.impact >= 75
-                ? "text-emerald-600"
-                : p.impact >= 60
-                ? "text-yellow-600"
-                : "text-red-600"
-            } font-medium">
-              ${p.impact.toFixed(0)}
-            </td>
-            <td class="text-right text-xs ${
-              p.delta > 0.8
-                ? "text-emerald-600"
-                : p.delta < -0.8
-                ? "text-red-600"
-                : "text-gray-400"
-            }">
-              ${
-                !previousTPI[p.name]
-                  ? "•"
-                  : p.delta > 0.8
-                  ? `▲${p.delta.toFixed(1)}`
-                  : p.delta < -0.8
-                  ? `▼${Math.abs(p.delta).toFixed(1)}`
-                  : "•"
-              }
-            </td>
-            <td class="text-right text-gray-500">${p.games}</td>
-          </tr>`
-          )
-          .join("")}
-      </tbody>
-    </table>`;
-
+  // ---------- UI: quick player chips ----------
   const playerButtons = `
-    <div class="mt-4 flex flex-wrap gap-2 fade-in delay-3">
+    <div class="mt-3 flex flex-wrap gap-2">
       ${playerStatsArr
         .map(
           (p) => `
@@ -1801,368 +1815,123 @@ function renderObjectiveImpact(data) {
          class="mt-4 hidden opacity-0 translate-y-2 transition-all duration-300 ease-out"></div>`;
 
   const infoBox = `
-    <div id="objective-info" class="mt-6 border-t pt-3 fade-in delay-4">
+    <div id="objective-info" class="mt-5 border-top border-t pt-3">
       <button
         id="toggleObjectiveInfo"
         class="flex items-center gap-1 text-sm font-semibold text-gray-700 hover:text-orange-600 transition">
-        <span>ℹ️ What does this score mean?</span>
+        <span>ℹ️ How is Total Player Impact calculated?</span>
         <span id="infoArrow" class="transition-transform">▼</span>
       </button>
       <div id="objectiveInfoContent"
            class="hidden text-sm text-gray-600 mt-2 leading-relaxed">
-        <p><strong>Total Player Impact</strong> (40–100) is a relative score inside your team. It blends:</p>
+        <p><strong>Total Player Impact</strong> (40–100) is a relative score inside Les Nübs. It blends:</p>
         <ul class="list-disc ml-5 mt-1 space-y-1">
-          <li><strong>Individual performance</strong>: KDA, kill participation, damage share, DPM, resource usage, solo pressure, plates, mechanical &amp; tactical scores, discipline.</li>
-          <li><strong>Objective &amp; macro impact</strong>: control, conversion, weighted objective participation, vision around objectives, tempo, macro &amp; teamfight contribution.</li>
-          <li><strong>Role context</strong>: expectations for Jungle / Support / Solo lanes / ADC and your actual role mix.</li>
-          <li><strong>Sample size</strong>: low-game players are shrunk toward team average and shown as ⭐ guests until they have enough data.</li>
+          <li><strong>Individual performance</strong>: KDA, kill participation, damage share, DPM, resource use, plates, mechanical &amp; tactical scores, discipline.</li>
+          <li><strong>Objective &amp; macro impact</strong>: control, conversion, weighted objective participation, vision around objectives, tempo, consistency.</li>
+          <li><strong>Role context</strong>: expectations per role adjusted by real role mix.</li>
+          <li><strong>Sample size</strong>: low-game players are shrunk toward team average and shown as ⭐ until enough games.</li>
         </ul>
         <p class="mt-1 text-xs text-gray-500">
-          Use the table + name buttons to inspect each player. Strengths &amp; focus notes are relative to team context, not soloqueue judgment.
+          Use the table or name chips to open each player’s Strengths &amp; Focus view below.
         </p>
       </div>
     </div>`;
 
-  document.getElementById("objective-impact").innerHTML = `
-    <section class="fade-bg section-wrapper fade-in">
-      <div class="dashboard-card">
-        <div class="trend-header mb-2 flex items-center justify-between gap-3">
-          <h2>⭐ Total Player Impact (Individual)</h2>
-          ${trendButtons}
-        </div>
-        ${sideHTML}
-        ${objectiveHTML}
-        ${tableHTML}
-        ${playerButtons}
-        ${detailBox}
-        ${infoBox}
-      </div>
-    </section>`;
-
-  // ---------- Interactions ----------
-
-  // Trend window buttons
-  document
-    .querySelectorAll("[data-window]")
-    .forEach((btn) => {
-      btn.addEventListener("click", () => {
-        objectiveTrendWindow =
-          btn.getAttribute("data-window");
-        renderObjectiveImpact(data);
-      });
-    });
-
-  // Info toggle
-  const infoBtn = document.getElementById(
-    "toggleObjectiveInfo"
-  );
-  const infoContent =
-    document.getElementById(
-      "objectiveInfoContent"
-    );
-  const arrow =
-    document.getElementById("infoArrow");
-  if (infoBtn && infoContent && arrow) {
-    infoBtn.addEventListener("click", () => {
-      const hidden =
-        infoContent.classList.contains(
-          "hidden"
-        );
-      infoContent.classList.toggle("hidden");
-      arrow.style.transform = hidden
-        ? "rotate(180deg)"
-        : "rotate(0deg)";
-    });
-  }
-
-  // Build context for insights
+  // ---------- Detail panel builder ----------
   const mean = (arr) =>
     arr.length
-      ? arr.reduce((a, b) => a + b, 0) /
-        arr.length
+      ? arr.reduce((a, b) => a + b, 0) / arr.length
       : 0;
 
   const ctx = {
-    meanKDA: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgKDA || 0
-      )
-    ),
-    meanDmgShare: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgDmgShare || 0
-      )
-    ),
-    meanDPM: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgDPM || 0
-      )
-    ),
-    meanGold: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgGoldMin || 0
-      )
-    ),
-    meanCS: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgCSMin || 0
-      )
-    ),
-    meanSolo: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgSolo || 0
-      )
-    ),
-    meanPlates: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgPlates || 0
-      )
-    ),
-    meanDeaths: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.deathsPg || 0
-      )
-    ),
-    meanMech: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgMech || 0
-      )
-    ),
-    meanTact: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgTact || 0
-      )
-    ),
-    meanCarry: mean(
-      playerStatsArr.map(
-        (p) => p.indiv.avgCarry || 0
-      )
-    ),
-    meanControl: mean(
-      playerStatsArr.map(
-        (p) => p.control || 0
-      )
-    ),
-    meanConv: mean(
-      playerStatsArr.map(
-        (p) => p.conversion || 0
-      )
-    ),
-    meanPart: mean(
-      playerStatsArr.map(
-        (p) => p.participation || 0
-      )
-    ),
-    meanVision: mean(
-      playerStatsArr.map(
-        (p) => p.vision || 0
-      )
-    ),
-    meanTempo: mean(
-      playerStatsArr.map(
-        (p) => p.tempo || 0
-      )
-    ),
-    meanCons: mean(
-      playerStatsArr.map(
-        (p) => p.consistency || 0
-      )
-    ),
+    meanKDA: mean(playerStatsArr.map((p) => p.indiv.avgKDA || 0)),
+    meanDmgShare: mean(playerStatsArr.map((p) => p.indiv.avgDmgShare || 0)),
+    meanDPM: mean(playerStatsArr.map((p) => p.indiv.avgDPM || 0)),
+    meanGold: mean(playerStatsArr.map((p) => p.indiv.avgGoldMin || 0)),
+    meanCS: mean(playerStatsArr.map((p) => p.indiv.avgCSMin || 0)),
+    meanSolo: mean(playerStatsArr.map((p) => p.indiv.avgSolo || 0)),
+    meanPlates: mean(playerStatsArr.map((p) => p.indiv.avgPlates || 0)),
+    meanDeaths: mean(playerStatsArr.map((p) => p.indiv.deathsPg || 0)),
+    meanMech: mean(playerStatsArr.map((p) => p.indiv.avgMech || 0)),
+    meanTact: mean(playerStatsArr.map((p) => p.indiv.avgTact || 0)),
+    meanCarry: mean(playerStatsArr.map((p) => p.indiv.avgCarry || 0)),
+    meanControl: mean(playerStatsArr.map((p) => p.control || 0)),
+    meanConv: mean(playerStatsArr.map((p) => p.conversion || 0)),
+    meanPart: mean(playerStatsArr.map((p) => p.participation || 0)),
+    meanVision: mean(playerStatsArr.map((p) => p.vision || 0)),
+    meanTempo: mean(playerStatsArr.map((p) => p.tempo || 0)),
+    meanCons: mean(playerStatsArr.map((p) => p.consistency || 0)),
   };
-
-  const detailEl =
-    document.getElementById(
-      "player-detail"
-    );
 
   const buildPlayerDetail = (p) => {
     const S = [];
     const F = [];
 
-    const ratio = (val, avg) =>
-      avg > 0 ? val / avg : 1;
-
-    const add = (cond, arr, text) => {
-      if (cond) arr.push(text);
-    };
+    const ratio = (val, avg) => (avg > 0 ? val / avg : 1);
+    const add = (cond, arr, text) => { if (cond) arr.push(text); };
 
     // Lane & economy
-    add(
-      ratio(p.indiv.avgCSMin, ctx.meanCS) >
-        1.15,
-      S,
-      "Strong CS/min & lane farming — reliably converting waves into gold."
-    );
-    add(
-      ratio(p.indiv.avgCSMin, ctx.meanCS) <
-        0.85,
-      F,
-      "Work on CS/min & wave control to secure more stable resources."
-    );
+    add(ratio(p.indiv.avgCSMin, ctx.meanCS) > 1.15, S,
+      "Strong CS/min & lane farming — reliably converting waves into gold.");
+    add(ratio(p.indiv.avgCSMin, ctx.meanCS) < 0.85, F,
+      "Work on CS/min & wave control to secure more stable resources.");
 
-    add(
-      ratio(
-        p.indiv.avgGoldMin,
-        ctx.meanGold
-      ) > 1.15,
-      S,
-      "High gold per minute — good tempo on farming & objectives."
-    );
-    add(
-      ratio(
-        p.indiv.avgGoldMin,
-        ctx.meanGold
-      ) < 0.85,
-      F,
-      "Increase farming efficiency and join only high-value fights."
-    );
+    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) > 1.15, S,
+      "High gold per minute — good tempo on farming & objectives.");
+    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) < 0.85, F,
+      "Increase farming efficiency and join only high-value fights.");
 
     // Combat & carry
-    add(
-      ratio(p.indiv.avgKDA, ctx.meanKDA) >
-        1.15,
-      S,
-      "Efficient KDA — good fight selection & survival."
-    );
-    add(
-      ratio(p.indiv.avgKDA, ctx.meanKDA) <
-        0.85,
-      F,
-      "Review death patterns; avoid low-value deaths & greedy plays."
-    );
+    add(ratio(p.indiv.avgKDA, ctx.meanKDA) > 1.15, S,
+      "Efficient KDA — good fight selection & survival.");
+    add(ratio(p.indiv.avgKDA, ctx.meanKDA) < 0.85, F,
+      "Review death patterns; avoid low-value deaths & greedy plays.");
 
-    add(
-      ratio(
-        p.indiv.avgDmgShare,
-        ctx.meanDmgShare
-      ) > 1.15,
-      S,
-      "High damage share — strong carry presence in fights."
-    );
-    add(
-      ratio(
-        p.indiv.avgDmgShare,
-        ctx.meanDmgShare
-      ) < 0.75,
-      F,
-      "Look for better DPS uptime and positioning to impact fights."
-    );
+    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) > 1.15, S,
+      "High damage share — strong carry presence in fights.");
+    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) < 0.75, F,
+      "Look for better DPS uptime and positioning to impact fights.");
 
-    add(
-      ratio(p.indiv.avgMech, ctx.meanMech) >
-        1.15,
-      S,
-      "Mechanical Impact above team baseline — confident execution."
-    );
-    add(
-      ratio(p.indiv.avgMech, ctx.meanMech) <
-        0.85,
-      F,
-      "Focus on clean combos and reliability in key fights."
-    );
+    add(ratio(p.indiv.avgMech, ctx.meanMech) > 1.15, S,
+      "Mechanical Impact above team baseline — confident execution.");
+    add(ratio(p.indiv.avgMech, ctx.meanMech) < 0.85, F,
+      "Focus on clean combos and reliability in key fights.");
 
     // Decision making
-    add(
-      ratio(
-        p.indiv.avgTact,
-        ctx.meanTact
-      ) > 1.15,
-      S,
-      "Good Tactical Intelligence — strong decision making around plays."
-    );
-    add(
-      ratio(
-        p.indiv.avgTact,
-        ctx.meanTact
-      ) < 0.85,
-      F,
-      "Tighten decision making — when to contest, reset, or cross-map."
-    );
+    add(ratio(p.indiv.avgTact, ctx.meanTact) > 1.15, S,
+      "Good Tactical Intelligence — strong decision making around plays.");
+    add(ratio(p.indiv.avgTact, ctx.meanTact) < 0.85, F,
+      "Tighten decision making — when to contest, reset, or cross-map.");
 
     // Objectives & macro
-    add(
-      ratio(
-        p.control,
-        ctx.meanControl
-      ) > 1.15,
-      S,
-      "Drives objective control — presence correlates with secured objectives."
-    );
-    add(
-      ratio(
-        p.conversion,
-        ctx.meanConv
-      ) > 1.15,
-      S,
-      "Converts advantages into objectives very well."
-    );
-    add(
-      ratio(
-        p.participation,
-        ctx.meanPart
-      ) < 0.85,
-      F,
-      "Join more setups when team plays for Dragon/Herald/Baron/Towers."
-    );
+    add(ratio(p.control, ctx.meanControl) > 1.15, S,
+      "Drives objective control — presence correlates with secured objectives.");
+    add(ratio(p.conversion, ctx.meanConv) > 1.15, S,
+      "Converts advantages into objectives very well.");
+    add(ratio(p.participation, ctx.meanPart) < 0.85, F,
+      "Join more setups when team plays for Dragon/Herald/Baron/Towers.");
 
-    add(
-      ratio(p.vision, ctx.meanVision) >
-        1.15,
-      S,
-      "Impactful vision around objectives — enables safe, informed plays."
-    );
-    add(
-      ratio(p.vision, ctx.meanVision) <
-        0.85,
-      F,
-      "Improve vision control/denial near key objectives."
-    );
+    add(ratio(p.vision, ctx.meanVision) > 1.15, S,
+      "Impactful vision around objectives — enables safe, informed plays.");
+    add(ratio(p.vision, ctx.meanVision) < 0.85, F,
+      "Improve vision control/denial near key objectives.");
 
-    add(
-      ratio(p.tempo, ctx.meanTempo) >
-        1.15,
-      S,
-      "Good tempo & rotations — arrives early to important areas."
-    );
-    add(
-      ratio(p.consistency, ctx.meanCons) >
-        1.15,
-      S,
-      "Consistent contribution game to game."
-    );
-    add(
-      ratio(p.consistency, ctx.meanCons) <
-        0.85,
-      F,
-      "Reduce volatility — aim for a repeatable baseline performance."
-    );
+    add(ratio(p.tempo, ctx.meanTempo) > 1.15, S,
+      "Good tempo & rotations — arrives early to important areas.");
+    add(ratio(p.consistency, ctx.meanCons) > 1.15, S,
+      "Consistent contribution game to game.");
+    add(ratio(p.consistency, ctx.meanCons) < 0.85, F,
+      "Reduce volatility — aim for a repeatable baseline performance.");
 
-    // Discipline (deaths)
-    add(
-      p.indiv.deathsPg >
-        ctx.meanDeaths * 1.15,
-      F,
-      "High deaths per game — focus on safer pathing, resets, and info usage."
-    );
-    add(
-      p.indiv.deathsPg <
-        ctx.meanDeaths * 0.85,
-      S,
-      "Good death discipline — rarely gives unnecessary advantages."
-    );
+    // Discipline
+    add(p.indiv.deathsPg > ctx.meanDeaths * 1.15, F,
+      "High deaths per game — focus on safer pathing, resets, and info usage.");
+    add(p.indiv.deathsPg < ctx.meanDeaths * 0.85, S,
+      "Good death discipline — rarely gives unnecessary advantages.");
 
-    const uniq = (arr) => [
-      ...new Set(arr),
-    ];
-
-    const strengths = uniq(S).slice(
-      0,
-      5
-    );
-    const focus = uniq(F).slice(
-      0,
-      5
-    );
+    const uniq = (arr) => [...new Set(arr)];
+    const strengths = uniq(S).slice(0, 5);
+    const focus = uniq(F).slice(0, 5);
 
     const badge =
       p.impact >= 75
@@ -2177,24 +1946,15 @@ function renderObjectiveImpact(data) {
           <div>
             <div class="text-xs uppercase tracking-wide opacity-70">Total Player Impact</div>
             <div class="text-2xl font-semibold">
-              ${p.impact.toFixed(
-                0
-              )}
+              ${p.impact.toFixed(0)}
               <span class="text-xs text-gray-500 font-normal ml-1">
-                indiv: ${(p._indivComposite * 100).toFixed(
-                  0
-                )} • obj: ${(p._objComposite * 100).toFixed(
-      0
-    )}
+                indiv: ${(p._indivComposite * 100).toFixed(0)}
+                • obj: ${(p._objComposite * 100).toFixed(0)}
               </span>
             </div>
           </div>
           <div class="text-xs text-gray-600">
-            ${p.name} · ${p.mainRole}${
-      p.isFlex
-        ? " (flex)"
-        : ""
-    }${p.isGuest ? " · ⭐ low sample" : ""}
+            ${p.name} · ${p.mainRole}${p.isFlex ? " (flex)" : ""}${p.isGuest ? " · ⭐ low sample" : ""}
             <div class="text-[0.65rem] text-gray-400">
               Games: ${p.games} • Roles: ${p.roleMix}
             </div>
@@ -2206,12 +1966,7 @@ function renderObjectiveImpact(data) {
             <div class="font-semibold mb-1">🔥 Strengths</div>
             ${
               strengths.length
-                ? strengths
-                    .map(
-                      (t) =>
-                        `<div class="mb-1">• ${t}</div>`
-                    )
-                    .join("")
+                ? strengths.map((t) => `<div class="mb-1">• ${t}</div>`).join("")
                 : `<div class="text-gray-500">Solid, balanced profile so far.</div>`
             }
           </div>
@@ -2219,12 +1974,7 @@ function renderObjectiveImpact(data) {
             <div class="font-semibold mb-1">🎯 Focus Points</div>
             ${
               focus.length
-                ? focus
-                    .map(
-                      (t) =>
-                        `<div class="mb-1">• ${t}</div>`
-                    )
-                    .join("")
+                ? focus.map((t) => `<div class="mb-1">• ${t}</div>`).join("")
                 : `<div class="text-gray-500">No major red flags — push existing strengths.</div>`
             }
           </div>
@@ -2233,67 +1983,103 @@ function renderObjectiveImpact(data) {
     `;
   };
 
+  // ---------- Render card ----------
+  document.getElementById("objective-impact").innerHTML = `
+    <section class="section-wrapper fade-in mb-10">
+      <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+          <div>
+            <h2 class="text-[1.1rem] font-semibold text-orange-500 tracking-tight">
+              Total Player Impact (Individual)
+            </h2>
+            <p class="text-[0.7rem] text-gray-600">
+              Relative impact inside Les Nübs — blends individual performance with macro &amp; objective impact, role-adjusted.
+            </p>
+          </div>
+          ${trendButtons}
+        </div>
+
+        ${tableHTML}
+        ${playerButtons}
+        ${detailBox}
+        ${infoBox}
+      </div>
+    </section>
+  `;
+
+  // ---------- Interactions ----------
+  // Trend buttons
+  document
+    .querySelectorAll("#objective-impact [data-window]")
+    .forEach((btn) => {
+      btn.addEventListener("click", () => {
+        objectiveTrendWindow = btn.getAttribute("data-window");
+        renderObjectiveImpact(data);
+      });
+    });
+
+  // Info toggle
+  const infoBtn = document.getElementById("toggleObjectiveInfo");
+  const infoContent = document.getElementById("objectiveInfoContent");
+  const arrow = document.getElementById("infoArrow");
+  if (infoBtn && infoContent && arrow) {
+    infoBtn.addEventListener("click", () => {
+      const hidden = infoContent.classList.contains("hidden");
+      infoContent.classList.toggle("hidden");
+      arrow.style.transform = hidden ? "rotate(180deg)" : "rotate(0deg)";
+    });
+  }
+
+  const detailEl = document.getElementById("player-detail");
+
   const showPlayer = (name) => {
     if (!detailEl) return;
-    const p = playerStatsArr.find(
-      (x) => x.name === name
-    );
+    const p = playerStatsArr.find((x) => x.name === name);
     if (!p) return;
-
-    detailEl.innerHTML =
-      buildPlayerDetail(p);
-    detailEl.classList.remove(
-      "hidden",
-      "opacity-0",
-      "translate-y-2"
-    );
+    detailEl.innerHTML = buildPlayerDetail(p);
+    detailEl.classList.remove("hidden", "opacity-0", "translate-y-2");
     requestAnimationFrame(() => {
-      detailEl.classList.add(
-        "opacity-100"
-      );
+      detailEl.classList.add("opacity-100");
     });
   };
 
-  // row click
+  // Table rows
   document
-    .querySelectorAll(
-      '#objective-impact table tbody tr[data-player]'
-    )
+    .querySelectorAll('#objective-impact table tbody tr[data-player]')
     .forEach((row) => {
       row.addEventListener("click", () => {
-        const name =
-          row.getAttribute(
-            "data-player"
-          );
+        const name = row.getAttribute("data-player");
         showPlayer(name);
       });
     });
 
-  // button click
+  // Player chips
   document
-    .querySelectorAll(
-      ".player-select-btn"
-    )
+    .querySelectorAll("#objective-impact .player-select-btn")
     .forEach((btn) => {
       btn.addEventListener("click", () => {
-        const name =
-          btn.getAttribute(
-            "data-player"
-          );
+        const name = btn.getAttribute("data-player");
         showPlayer(name);
       });
     });
 
-  console.log(
-    "⭐ Total Player Impact",
-    playerStatsArr.map((p) => ({
+  console.log("⭐ Total Player Impact", {
+    window: objectiveTrendWindow,
+    season: currentSeason,
+    games: totalGames,
+    players: playerStatsArr.map((p) => ({
       name: p.name,
       impact: p.impact.toFixed(1),
       games: p.games,
       guest: p.isGuest,
-    }))
-  );
+    })),
+    overallWinrate: overallWinrate.toFixed(1),
+    blueWinrate: blueWinrate.toFixed(1),
+    redWinrate: redWinrate.toFixed(1),
+    objectives: objectiveCards,
+  });
 }
+
 
 
 // ============================================================================
@@ -3810,6 +3596,1327 @@ function setTrendWindow(n) {
   }
 }
 
+// =========================
+// Lane Dynamics & Playmakers v2.1
+// =========================
+
+let lanePhase = "early"; // "early" | "mid" | "late"
+let laneWindow = "season"; // "5" | "10" | "split" | "season"
+
+// ---------- Helpers ----------
+
+function normLaneRoleLD(r) {
+  const raw = String(r["Role"] || r["ROLE"] || "").toUpperCase();
+  if (!raw) return "";
+  if (raw.includes("TOP")) return "TOP";
+  if (raw.includes("JUNG")) return "JUNGLE";
+  if (raw.includes("MID")) return "MIDDLE";
+  if (raw.includes("BOT") || raw.includes("BOTTOM") || raw.includes("ADC"))
+    return "BOTTOM";
+  if (raw.includes("SUP") || raw.includes("UTIL")) return "SUPPORT";
+  return raw;
+}
+
+// Cheap "home lane" for roam detection
+function laneHomeZoneLD(role, teamId) {
+  if (role === "TOP") return teamId === 100 ? "Top Lane" : "Bot Lane";
+  if (role === "BOTTOM") return teamId === 100 ? "Bot Lane" : "Top Lane";
+  if (role === "MIDDLE") return "Mid Lane";
+  if (role === "SUPPORT") return "Bot Lane";
+  if (role === "JUNGLE") return "Jungle";
+  return "";
+}
+
+function numLD(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  const n = parseFloat(String(v).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function boolLD(v) {
+  const s = String(v || "").trim().toUpperCase();
+  return s === "1" || s === "TRUE" || s === "YES";
+}
+
+function getGameIdLD(r) {
+  return (
+    r["Match ID"] ||
+    r["Game #"] ||
+    r["Game ID"] ||
+    r["MatchID"] ||
+    r["Date"] ||
+    ""
+  );
+}
+
+// --- Compute match sets for Last5/10/Split/Season based on season rows ---
+function buildLaneWindowGameSets(seasonRows) {
+  const res = { "5": null, "10": null, split: null, season: null };
+  if (!seasonRows || !seasonRows.length) return res;
+
+  const all = seasonRows.map((r) => getGameIdLD(r)).filter(Boolean);
+  const unique = [...new Set(all)];
+  if (!unique.length) return res;
+
+  // assume seasonRows already chronological
+  res["5"] = new Set(unique.slice(-5));
+  res["10"] = new Set(unique.slice(-10));
+
+  // current split = max Split for that season
+  const splits = seasonRows
+    .map((r) => parseInt(String(r["Split"] || "").trim(), 10))
+    .filter((n) => Number.isFinite(n));
+  if (splits.length) {
+    const currentSplit = Math.max(...splits);
+    const splitGames = seasonRows
+      .filter(
+        (r) => parseInt(String(r["Split"] || "").trim(), 10) === currentSplit
+      )
+      .map((r) => getGameIdLD(r))
+      .filter(Boolean);
+    res.split = new Set([...new Set(splitGames)]);
+  }
+
+  // Season = all known games
+  res.season = new Set(unique);
+  return res;
+}
+
+// --- Phase helper: dynamic early/mid/late per match ---
+function buildMatchLengthsLD(rows) {
+  const len = {};
+  rows.forEach((r) => {
+    const id = getGameIdLD(r);
+    if (!id) return;
+    const m = numLD(r["Minute"]);
+    if (!len[id] || m > len[id]) len[id] = m;
+  });
+  return len;
+}
+
+function getPhaseForMinute(matchId, minute, matchLengths) {
+  const total = matchLengths[matchId] || 30;
+  if (minute < 3) return null;
+
+  // dynamic boundaries
+  const earlyEnd = Math.max(8, Math.min(14, Math.round(total * 0.25)));
+  const midEnd = Math.max(earlyEnd + 5, Math.round(total * 0.6));
+
+  if (minute <= earlyEnd) return "early";
+  if (minute <= midEnd) return "mid";
+  return "late";
+}
+
+// ---------- Profile & Investment tag helpers ----------
+
+// Tooltip for classical performance tags
+function getProfileTooltipLD(tag) {
+  switch (tag) {
+    case "Lane Rock":
+      return "Consistently wins or holds lane with strong fundamentals in this phase.";
+    case "Resource Carry":
+      return "Performs best when given resources; converts help into reliable leads.";
+    case "Playmaker":
+      return "Moves first while stable; drives proactive plays and roams.";
+    case "Pressure Sink":
+      return "Often behind despite ally presence; beware of over-investing.";
+    case "High-Risk Roamer":
+      return "Roams aggressively from even/behind states; can swing games both ways.";
+    case "Guest (Small Sample)":
+      return "Very small sample in this window; interpret trends cautiously.";
+    case "Stable":
+      return "Solid, unspectacular lane outcomes; rarely a liability.";
+    case "Lane Rock Duo":
+      return "Botlane duo with strong, repeatable lane control and reliability.";
+    case "Playmaker Duo":
+      return "Botlane duo that frequently creates plays and roams effectively.";
+    case "Pressure Sink Duo":
+      return "Botlane duo that struggles even with attention; monitor drafts.";
+    case "Stable Duo":
+      return "Botlane duo with generally steady, average outcomes.";
+    default:
+      return "";
+  }
+}
+
+// Decide lane investment tag (for jungler/coach) from existing metrics
+function getInvestmentTagLD(p) {
+  const lc = p.laneControl;
+  const rel = p.reliability;
+  const self = p.selfLead || 0;
+  const help = p.helpedLead || 0;
+  const sink = p.pressureSink || 0;
+
+  // Don't bother if we have no lead split info
+  const hasLeadSignal = self + help > 0;
+
+  // Late game: only call out very clear extremes to avoid ARAM noise
+  if (lanePhase === "late") {
+    if (help >= 35 && (lc <= 0 || rel <= 50 || sink >= 10)) {
+      return "Resource Trap";
+    }
+    if (self >= 85 && rel >= 65 && lc >= 0 && sink < 8) {
+      return "Island Safe";
+    }
+    return "";
+  }
+
+  // Early/Mid rules (ordered by strength / clarity)
+
+  // 1) Resource Trap: we invest but it doesn't pay
+  if (help >= 35 && (lc <= 0 || rel <= 50 || sink >= 10)) {
+    return "Resource Trap";
+  }
+
+  // 2) Invest Pays Off: high helped share, good results
+  if (hasLeadSignal && help >= 40 && lc >= 5 && rel >= 55) {
+    return "Invest Pays Off";
+  }
+
+  // 3) Island Safe: hard self-sufficient, good outcomes
+  if (self >= 80 && rel >= 60 && lc >= 0 && sink < 8) {
+    return "Island Safe";
+  }
+
+  // 4) Low-Maintenance: generally fine with light touch
+  if (self >= 65 && rel >= 55 && lc > -3 && sink < 10) {
+    return "Low-Maintenance";
+  }
+
+  // 5) Setup Lane: balanced self+help, good if we coordinate
+  if (
+    self >= 50 &&
+    self <= 80 &&
+    help >= 20 &&
+    help <= 40 &&
+    lc >= 0 &&
+    rel >= 55
+  ) {
+    return "Setup Lane";
+  }
+
+  // 6) Volatile Duelist: big island player, but coinflippy
+  if (self >= 80 && rel < 55) {
+    return "Volatile Duelist";
+  }
+
+  // 7) Needs Cover: struggles alone; stabilizes with help
+  if (
+    self >= 40 &&
+    self <= 65 &&
+    rel < 55 &&
+    help >= 20 &&
+    lc > -8
+  ) {
+    return "Needs Cover";
+  }
+
+  return "";
+}
+
+// Tooltip for investment tags
+function getInvestmentTooltipLD(tag) {
+  switch (tag) {
+    case "Island Safe":
+      return "Wins or holds lane mostly alone. You can path away without griefing them.";
+    case "Low-Maintenance":
+      return "Usually stable with minimal attention. Cover dives and resets; no need to force plays.";
+    case "Invest Pays Off":
+      return "When you play for this lane, it reliably converts pressure into leads.";
+    case "Setup Lane":
+      return "Strong for coordinated plays (2v2+1). Use for dives, prio, and planned setups.";
+    case "Volatile Duelist":
+      return "High-risk island. Can solo-win or solo-lose; draft and cover accordingly.";
+    case "Needs Cover":
+      return "Fully ignoring this lane is risky. Targeted visits help it stabilize.";
+    case "Resource Trap":
+      return "Heavy attention rarely sticks as a lead. Avoid defaulting to play through this lane.";
+    default:
+      return "";
+  }
+}
+
+// ---------- MAIN API (called from renderAllSections) ----------
+
+function renderLaneDynamics(seasonRows, timelineRows) {
+  const allTimeline =
+    (timelineRows && timelineRows.length)
+      ? timelineRows
+      : (typeof cachedTimelineRows !== "undefined"
+          ? cachedTimelineRows
+          : null);
+
+  if (!allTimeline || !allTimeline.length) return;
+
+  const baseSeason =
+    (seasonRows && seasonRows.length)
+      ? seasonRows
+      : (typeof cachedRows !== "undefined" ? cachedRows : []);
+
+  const windows = buildLaneWindowGameSets(baseSeason);
+  const activeSet = windows[laneWindow];
+
+  // All timeline rows inside active window (all phases; phase applied later)
+  const timelineInWindow =
+    activeSet && activeSet.size
+      ? allTimeline.filter((r) => activeSet.has(getGameIdLD(r)))
+      : allTimeline;
+
+  if (!timelineInWindow.length) {
+    renderLaneDynamicsCard([], {}, {});
+    return;
+  }
+
+  // Window-wide role minutes & games (for major roles, flex, guests, jungle share)
+  const roleMinutesByPlayer = {};
+  const gamesByPlayer = {};
+
+  timelineInWindow.forEach((r) => {
+    const player = String(r["Player"] || "").trim();
+    if (!player) return;
+    const role = normLaneRoleLD(r) || "UNKNOWN";
+    if (!role) return;
+
+    const gameId = getGameIdLD(r);
+    if (!gamesByPlayer[player]) gamesByPlayer[player] = new Set();
+    if (gameId) gamesByPlayer[player].add(gameId);
+
+    if (!roleMinutesByPlayer[player]) {
+      roleMinutesByPlayer[player] = { total: 0, byRole: {} };
+    }
+    const rm = roleMinutesByPlayer[player];
+    rm.total += 1;
+    rm.byRole[role] = (rm.byRole[role] || 0) + 1;
+  });
+
+  renderLaneDynamicsCard(timelineInWindow, roleMinutesByPlayer, gamesByPlayer);
+}
+
+// ---------- Card (phase-specific metrics built here) ----------
+
+function renderLaneDynamicsCard(windowTimelineRows, roleMinutesByPlayer, gamesByPlayer) {
+  const container = document.getElementById("lane-dynamics");
+  if (!container) return;
+
+  if (!windowTimelineRows || !windowTimelineRows.length) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-8">
+        <div class="dashboard-card">
+          <h2 class="text-[1.05rem] font-semibold text-sky-500 mb-1">Lane Dynamics & Playmakers</h2>
+          <p class="text-sm text-gray-500">No timeline data in scope for this window/phase.</p>
+        </div>
+      </section>`;
+    return;
+  }
+
+  const allGameIds = new Set(
+    windowTimelineRows.map((r) => getGameIdLD(r)).filter(Boolean)
+  );
+  const totalTimelineGames = allGameIds.size || 1;
+
+  const matchLengths = buildMatchLengthsLD(windowTimelineRows);
+
+  const perPlayerRole = {}; // key: player|role
+  const perFrame = {}; // for BOT+SUP duos
+  const duoStats = {};
+  const jungleStats = {};
+  const objectiveEvents = {};
+  const objTrack = {};
+
+  // ---------- PASS 1: objectives, phase-filtered stats, duo frames, jungle ----------
+  windowTimelineRows.forEach((r) => {
+    const player = String(r["Player"] || "").trim();
+    const matchId = getGameIdLD(r);
+    if (!player || !matchId) return;
+
+    const minute = numLD(r["Minute"]);
+    const role = normLaneRoleLD(r) || "UNKNOWN";
+    const teamId = numLD(r["TeamId"]);
+
+    // --- objective tracking (all minutes) ---
+    const objKey = `${matchId}|${teamId}`;
+    const prev = objTrack[objKey] || {
+      drag: 0,
+      herald: 0,
+      baron: 0,
+      grubs: 0,
+      atak: 0,
+      towers: 0,
+      inhibs: 0,
+    };
+    const cur = {
+      drag: numLD(r["Team Dragons"]),
+      herald: numLD(r["Team Heralds"]),
+      baron: numLD(r["Team Barons"]),
+      grubs: numLD(r["Team Voidgrubs"]),
+      atak: numLD(r["Team Atakhans"]),
+      towers: numLD(r["Team Towers"]),
+      inhibs: numLD(r["Team Inhibitors"]),
+    };
+    const gotObj =
+      cur.drag > prev.drag ||
+      cur.herald > prev.herald ||
+      cur.baron > prev.baron ||
+      cur.grubs > prev.grubs ||
+      cur.atak > prev.atak ||
+      cur.towers > prev.towers ||
+      cur.inhibs > prev.inhibs;
+
+    if (gotObj) {
+      objectiveEvents[`${matchId}|${teamId}|${minute}`] = true;
+    }
+    objTrack[objKey] = cur;
+
+    // --- apply phase gating for lane/map behaviour ---
+    const phase = getPhaseForMinute(matchId, minute, matchLengths);
+    if (!phase || phase !== lanePhase) return;
+
+    const laneZone = laneHomeZoneLD(role, teamId);
+    const zone = String(r["Zone"] || "").trim();
+
+    const goldDiff = numLD(r["Gold Diff vs Opp"]);
+    const xpDiff = numLD(r["XP Diff vs Opp"]);
+    const csDiff = numLD(r["CS Diff vs Opp"]);
+    const closeTeammates = numLD(r["Close Teammates"]);
+    const isGrouped = boolLD(r["Is Grouped"]);
+    const inRiver = boolLD(r["In River"]);
+
+    // --- per-player-per-role metrics ---
+    const prKey = `${player}|${role}`;
+    if (!perPlayerRole[prKey]) {
+      perPlayerRole[prKey] = {
+        name: player,
+        role,
+        minutes: 0,
+        laneControlSum: 0,
+        goodMinutes: 0,
+        hardLosingMinutes: 0,
+        selfLeadMinutes: 0,
+        helpLeadMinutes: 0,
+        sinkMinutes: 0,
+        roamPlayMinutes: 0,
+        games: new Set(),
+      };
+    }
+    const pr = perPlayerRole[prKey];
+    pr.games.add(matchId);
+    pr.minutes += 1;
+
+    // lane control snapshot (clamped)
+    const g = Math.max(-800, Math.min(800, goldDiff));
+    const x = Math.max(-2, Math.min(2, xpDiff));
+    const c = Math.max(-25, Math.min(25, csDiff));
+    const control = (g / 800 + x / 2 + c / 25) / 3;
+    pr.laneControlSum += control;
+
+    const combinedBehind =
+      goldDiff <= -300 || xpDiff <= -1 || csDiff <= -15;
+    const combinedAhead =
+      goldDiff >= 150 || xpDiff >= 0.5 || csDiff >= 8;
+
+    // Reliability: minutes not significantly behind
+    if (!combinedBehind) pr.goodMinutes += 1;
+    if (combinedBehind) pr.hardLosingMinutes += 1;
+
+    // Self vs helped lead
+    if (combinedAhead) {
+      if (closeTeammates <= 1) pr.selfLeadMinutes += 1;
+      else if (closeTeammates >= 2) pr.helpLeadMinutes += 1;
+    }
+
+    // --- Smarter, phase-aware Pressure Sink ---
+    const teamGoldDiff = numLD(r["Gold Diff (Team)"]);
+    const teamAheadFlag = boolLD(r["Team Gold Ahead"]);
+    const teamNotHardLosing = teamAheadFlag || teamGoldDiff >= -800;
+
+    let pressureSinkMinute = false;
+
+    if (combinedBehind && closeTeammates >= 2 && teamNotHardLosing) {
+      if (phase === "early") {
+        pressureSinkMinute = true;
+      } else if (phase === "mid") {
+        pressureSinkMinute =
+          (goldDiff <= -400 || xpDiff <= -1.5 || csDiff <= -20) &&
+          closeTeammates >= 2;
+      } else {
+        // late: only extreme cases, and heavily protected
+        pressureSinkMinute =
+          (goldDiff <= -600 || xpDiff <= -2) && closeTeammates >= 3;
+      }
+    }
+
+    if (pressureSinkMinute) {
+      pr.sinkMinutes += 1;
+    }
+
+    // --- Playmaker: out of lane & grouped/river while not inting ---
+    const outOfLane =
+      laneZone &&
+      zone &&
+      laneZone !== zone &&
+      (inRiver || isGrouped || closeTeammates >= 2);
+
+    if (outOfLane && !combinedBehind) {
+      pr.roamPlayMinutes += 1;
+    }
+
+    // --- frames for botlane duos (phase-specific) ---
+    const frameKey = `${matchId}|${teamId}|${minute}`;
+    if (!perFrame[frameKey]) perFrame[frameKey] = [];
+    perFrame[frameKey].push({
+      player,
+      role,
+      goldDiff,
+      xpDiff,
+      csDiff,
+      laneZone,
+      zone,
+      closeTeammates,
+      isGrouped,
+      inRiver,
+      matchId,
+    });
+
+    // --- jungle behaviour (role & phase aware) ---
+    if (role === "JUNGLE") {
+      if (!jungleStats[player]) {
+        jungleStats[player] = {
+          player,
+          minutes: 0,
+          objPresenceMinutes: 0,
+          leadObjMinutes: 0,
+          gankMinutes: 0,
+          farmMinutes: 0,
+          games: new Set(),
+        };
+      }
+      const jg = jungleStats[player];
+      jg.minutes += 1;
+      jg.games.add(matchId);
+
+      const evKey = `${matchId}|${teamId}|${minute}`;
+      if (objectiveEvents[evKey]) {
+        jg.objPresenceMinutes += 1;
+
+        const teamAheadNow =
+          boolLD(r["Team Gold Ahead"]) || numLD(r["Gold Diff (Team)"]) > 0;
+        const jgAheadNow = goldDiff > 0 || xpDiff > 0;
+        if (teamAheadNow || jgAheadNow) {
+          jg.leadObjMinutes += 1;
+        }
+      }
+
+      const isFarm =
+        (zone === "Jungle" || (!zone && laneZone === "Jungle")) &&
+        !inRiver &&
+        closeTeammates <= 1;
+      const isGank =
+        !isFarm && (inRiver || closeTeammates >= 1 || zone !== "Jungle");
+
+      if (isFarm) jg.farmMinutes += 1;
+      if (isGank) jg.gankMinutes += 1;
+    }
+  });
+
+  const playerRoleEntries = Object.values(perPlayerRole);
+  if (!playerRoleEntries.length) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-8">
+        <div class="dashboard-card">
+          <h2 class="text-[1.05rem] font-semibold text-sky-500 mb-1">Lane Dynamics & Playmakers</h2>
+          <p class="text-sm text-gray-500">No timeline data in scope for this window/phase.</p>
+        </div>
+      </section>`;
+    return;
+  }
+
+  // ---------- Botlane Duos (BOTTOM + SUPPORT) ----------
+  Object.values(perFrame).forEach((frames) => {
+    const bot = frames.find((f) => f.role === "BOTTOM");
+    const sup = frames.find((f) => f.role === "SUPPORT");
+    if (!bot || !sup) return;
+
+    const [p1, p2] = [bot.player, sup.player].sort();
+    const key = `${p1} & ${p2}`;
+
+    if (!duoStats[key]) {
+      duoStats[key] = {
+        name: key,
+        p1,
+        p2,
+        minutes: 0,
+        laneControlSum: 0,
+        goodMinutes: 0,
+        hardLosingMinutes: 0,
+        playMinutes: 0,
+        sinkMinutes: 0,
+        games: new Set(),
+      };
+    }
+    const d = duoStats[key];
+    d.games.add(bot.matchId);
+    d.minutes += 1;
+
+    const avgGold = (bot.goldDiff + sup.goldDiff) / 2;
+    const avgXp = (bot.xpDiff + sup.xpDiff) / 2;
+    const avgCs = (bot.csDiff + sup.csDiff) / 2;
+
+    const g = Math.max(-800, Math.min(800, avgGold));
+    const x = Math.max(-2, Math.min(2, avgXp));
+    const c = Math.max(-25, Math.min(25, avgCs));
+    const control = (g / 800 + x / 2 + c / 25) / 3;
+    d.laneControlSum += control;
+
+    const combinedBehind =
+      avgGold <= -300 || avgXp <= -1 || avgCs <= -15;
+    const combinedAhead =
+      avgGold >= 150 || avgXp >= 0.5 || avgCs >= 8;
+
+    if (!combinedBehind) d.goodMinutes += 1;
+    if (combinedBehind) d.hardLosingMinutes += 1;
+
+    const outOfLane =
+      (bot.laneZone && bot.zone && bot.laneZone !== bot.zone) ||
+      (sup.laneZone && sup.zone && sup.laneZone !== sup.zone);
+
+    if (outOfLane && !combinedBehind) d.playMinutes += 1;
+
+    if (
+      combinedBehind &&
+      (bot.closeTeammates >= 2 || sup.closeTeammates >= 2)
+    ) {
+      d.sinkMinutes += 1;
+    }
+  });
+
+  const duoRows = Object.values(duoStats)
+    .filter((d) => d.minutes >= 40 && d.games.size >= 3)
+    .map((d) => {
+      const mins = Math.max(1, d.minutes);
+      const laneControl = (d.laneControlSum / mins) * 100;
+      const reliability = (d.goodMinutes / mins) * 100;
+      const playmaker = (d.playMinutes / mins) * 100;
+      const pressureSink = (d.sinkMinutes / mins) * 100;
+      const games = d.games.size || 1;
+
+      let tag = "Stable Duo";
+      if (laneControl >= 10 && reliability >= 65) tag = "Lane Rock Duo";
+      else if (playmaker >= 10 && reliability >= 55) tag = "Playmaker Duo";
+      else if (pressureSink >= 12) tag = "Pressure Sink Duo";
+
+      return {
+        name: d.name,
+        games,
+        laneControl,
+        reliability,
+        selfLead: null,
+        helpedLead: null,
+        pressureSink,
+        playmaker,
+        tag,
+        mainRole: "BOTTOM+SUPPORT",
+        roleMix: `${d.p1} + ${d.p2}`,
+        isFlex: false,
+        isGuest: false,
+        isDuo: true,
+      };
+    });
+
+  // ---------- Per-role player rows ----------
+  const tableRows = [];
+
+  playerRoleEntries.forEach((pr) => {
+    const rm = roleMinutesByPlayer && roleMinutesByPlayer[pr.name];
+    if (!rm || rm.total === 0) return;
+
+    const roleMinutes = rm.byRole[pr.role] || 0;
+    const roleShare = (roleMinutes / rm.total) * 100;
+
+    // Only show roles with meaningful share in this window
+    if (roleShare < 10) return;
+
+    const mins = Math.max(1, pr.minutes || 0);
+    if (mins < 5) return; // avoid ultra tiny phase samples
+
+    const gamesInRole = pr.games.size || 1;
+
+    const laneControl = (pr.laneControlSum / mins) * 100;
+    const reliability = (pr.goodMinutes / mins) * 100;
+
+    const leadDen = pr.selfLeadMinutes + pr.helpLeadMinutes;
+    const selfLead = leadDen > 0 ? (pr.selfLeadMinutes / leadDen) * 100 : 0;
+    const helpedLead = leadDen > 0 ? (pr.helpLeadMinutes / leadDen) * 100 : 0;
+
+    const pressureSink = (pr.sinkMinutes / mins) * 100;
+    const playmaker = (pr.roamPlayMinutes / mins) * 100;
+
+    const gp = gamesByPlayer && gamesByPlayer[pr.name];
+    const gamesInWindow = gp ? gp.size || 1 : gamesInRole;
+    const isGuest = gamesInWindow / totalTimelineGames < 0.1;
+
+    // Flex = ≥10% minutes in ≥2 roles (window-wide)
+    const flexRoles = Object.entries(rm.byRole)
+      .filter(([, c]) => (c / rm.total) * 100 >= 10)
+      .map(([r]) => r);
+    const isFlex = flexRoles.length >= 2;
+
+    const roleMix = Object.entries(rm.byRole)
+      .map(([r, c]) => `${r} ${Math.round((c / rm.total) * 100)}%`)
+      .join(" / ");
+
+    // Performance profile (unchanged math)
+    let tag = "Stable";
+    if (laneControl >= 15 && selfLead >= 55 && reliability >= 70) tag = "Lane Rock";
+    else if (laneControl >= 10 && helpedLead >= 45) tag = "Resource Carry";
+    else if (playmaker >= 10 && reliability >= 55) tag = "Playmaker";
+    else if (pressureSink >= 12) tag = "Pressure Sink";
+    else if (playmaker >= 12 && laneControl <= 0) tag = "High-Risk Roamer";
+
+    if (isGuest) tag = "Guest (Small Sample)";
+
+    // Investment tag for jungler/coach
+    const investmentTag = getInvestmentTagLD({
+      laneControl,
+      reliability,
+      selfLead,
+      helpedLead,
+      pressureSink,
+      playmaker,
+    });
+
+    tableRows.push({
+      name: pr.name,
+      displayRole: pr.role,
+      games: gamesInRole,
+      laneControl,
+      reliability,
+      selfLead,
+      helpedLead,
+      pressureSink,
+      playmaker,
+      tag,
+      investmentTag,
+      roleMix,
+      isFlex,
+      isGuest,
+      isDuo: false,
+    });
+  });
+
+  // Hide pure 1-game guests
+  const withPlayerMetrics = tableRows.filter(
+    (p) => !(p.isGuest && p.games <= 1)
+  );
+
+  // ---------- Sort ----------
+  withPlayerMetrics.sort((a, b) => {
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
+    if (a.games !== b.games) return b.games - a.games;
+    return b.laneControl - a.laneControl;
+  });
+
+  duoRows.sort((a, b) => b.laneControl - a.laneControl);
+
+  const timelineGamesInScope = totalTimelineGames;
+
+  // ---------- Highlights ----------
+
+  const topPlaymaker = [...withPlayerMetrics]
+    .filter((p) => !p.isGuest && p.games >= 5)
+    .sort((a, b) => b.playmaker - a.playmaker)[0];
+
+  const bestDuo = duoRows[0] || null;
+
+  // Build flex candidates per player (not per row)
+  const flexPlayersMap = {};
+  withPlayerMetrics.forEach((row) => {
+    if (!row.isFlex || row.isGuest || row.games < 5) return;
+    const name = row.name;
+    if (!flexPlayersMap[name]) {
+      flexPlayersMap[name] = { name, rows: [] };
+    }
+    flexPlayersMap[name].rows.push(row);
+  });
+
+  // Convert to summary objects: primary + best secondary role
+  const flexCandidatesList = Object.values(flexPlayersMap)
+    .map((fp) => {
+      const rm = roleMinutesByPlayer[fp.name];
+      if (!rm) return null;
+
+      const roles = Object.entries(rm.byRole)
+        .map(([role, mins]) => ({
+          role,
+          share: (mins / rm.total) * 100,
+        }))
+        .sort((a, b) => b.share - a.share);
+
+      if (roles.length < 2) return null;
+
+      const primary = roles[0];
+      const secondary = roles[1];
+      if (secondary.share < 10) return null;
+
+      const secondaryRow = fp.rows.find(
+        (r) => r.displayRole === secondary.role
+      );
+      if (!secondaryRow) return null;
+
+      return {
+        name: fp.name,
+        primaryRole: primary.role,
+        secondaryRole: secondary.role,
+        secondaryShare: secondary.share,
+        laneControl: secondaryRow.laneControl,
+        reliability: secondaryRow.reliability,
+        games: secondaryRow.games,
+      };
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        b.games - a.games ||
+        b.laneControl - a.laneControl
+    )
+    .slice(0, 3);
+
+  // ---------- Jungle profiles ----------
+  const jungleProfiles = Object.values(jungleStats)
+    .map((j) => {
+      const mins = Math.max(1, j.minutes || 0);
+      const games = j.games ? j.games.size || 0 : 0;
+
+      const rm = roleMinutesByPlayer && roleMinutesByPlayer[j.player];
+      const jungleMinutes =
+        rm && rm.byRole && rm.byRole["JUNGLE"] ? rm.byRole["JUNGLE"] : mins;
+      const jungleShare =
+        rm && rm.total > 0 ? (jungleMinutes / rm.total) * 100 : 0;
+
+      // Only legit junglers / serious off-role junglers
+      if (jungleShare < 10 || mins < 10 || games < 3) return null;
+
+      const objPresence = (j.objPresenceMinutes / mins) * 100;
+      const leadObj =
+        j.objPresenceMinutes > 0
+          ? (j.leadObjMinutes / j.objPresenceMinutes) * 100
+          : 0;
+      const gankShare = (j.gankMinutes / mins) * 100;
+      const farmShare = (j.farmMinutes / mins) * 100;
+
+      let style = "Balanced";
+      if (farmShare >= 60 && gankShare <= 40) style = "Farm Heavy";
+      else if (gankShare >= 45 && gankShare > farmShare) style = "Gank Heavy";
+      else if (objPresence >= 30 && leadObj >= 60) style = "Objective Engine";
+
+      return {
+        player: j.player,
+        mins,
+        games,
+        objPresence,
+        leadObj,
+        gankShare,
+        farmShare,
+        style,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      if (a.games !== b.games) return b.games - a.games;
+      return b.objPresence - a.objPresence;
+    });
+
+  // ---------- UI controls (phase + window) ----------
+
+  const phaseButtons = `
+    <div class="inline-flex gap-1 bg-sky-50 px-1 py-1 rounded-full">
+      ${[
+        ["early", "Early"],
+        ["mid", "Mid"],
+        ["late", "Late"],
+      ]
+        .map(
+          ([key, label]) => `
+        <button
+          class="px-3 py-1 rounded-full text-[0.7rem] font-medium transition
+          ${
+            lanePhase === key
+              ? "bg-sky-500 text-white shadow-sm"
+              : "bg-transparent text-sky-700 hover:bg-white hover:text-sky-600"
+          }"
+          data-lane-phase="${key}">
+          ${label}
+        </button>`
+        )
+        .join("")}
+    </div>`;
+
+  const windowButtons = `
+    <div class="flex gap-1 text-[0.7rem] font-medium">
+      ${[
+        ["5", "Last 5"],
+        ["10", "Last 10"],
+        ["split", "Current Split"],
+        ["season", "Season"],
+      ]
+        .map(
+          ([key, label]) => `
+        <button
+          class="px-2.5 py-1 rounded-md border transition
+          ${
+            laneWindow === key
+              ? "bg-orange-500 text-white border-orange-500"
+              : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"
+          }"
+          data-lane-window="${key}">
+          ${label}
+        </button>`
+        )
+        .join("")}
+    </div>`;
+
+  // ---------- Table rows HTML ----------
+
+  const playerRowsHTML = withPlayerMetrics
+    .map((p) => {
+      const lcColor =
+        p.laneControl >= 15
+          ? "text-emerald-600"
+          : p.laneControl >= 5
+          ? "text-sky-600"
+          : p.laneControl <= -10
+          ? "text-red-500"
+          : "text-gray-700";
+
+      const relColor =
+        p.reliability >= 75
+          ? "text-emerald-600"
+          : p.reliability <= 55
+          ? "text-red-500"
+          : "text-gray-700";
+
+      const playColor =
+        p.playmaker >= 14
+          ? "text-emerald-600"
+          : p.playmaker >= 8
+          ? "text-sky-600"
+          : "text-gray-500";
+
+      const sinkColor =
+        p.pressureSink >= 12 ? "text-red-500" : "text-gray-500";
+
+      const tagTone =
+        p.tag.startsWith("Lane Rock")
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : p.tag.startsWith("Playmaker")
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : p.tag.startsWith("Resource Carry")
+          ? "bg-amber-50 text-amber-800 border-amber-100"
+          : p.tag.includes("Pressure Sink")
+          ? "bg-red-50 text-red-700 border-red-100"
+          : p.tag.startsWith("Guest")
+          ? "bg-violet-50 text-violet-700 border-violet-100"
+          : "bg-slate-50 text-slate-700 border-slate-100";
+
+      const investmentTag = p.investmentTag || "";
+      const invTooltip = investmentTag
+        ? getInvestmentTooltipLD(investmentTag)
+        : "";
+      const invTone =
+        investmentTag === "Island Safe"
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : investmentTag === "Low-Maintenance"
+          ? "bg-emerald-50/60 text-emerald-700 border-emerald-100"
+          : investmentTag === "Invest Pays Off"
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : investmentTag === "Setup Lane"
+          ? "bg-sky-50/70 text-sky-700 border-sky-100"
+          : investmentTag === "Volatile Duelist"
+          ? "bg-amber-50 text-amber-800 border-amber-100"
+          : investmentTag === "Needs Cover"
+          ? "bg-orange-50 text-orange-800 border-orange-100"
+          : investmentTag === "Resource Trap"
+          ? "bg-red-50 text-red-700 border-red-100"
+          : "";
+
+      const guestStar = p.isGuest
+        ? `<span class="ml-1 text-[0.6rem] text-violet-500" title="Plays &lt;10% of games in this window">⭐</span>`
+        : "";
+
+      const flexMark = p.isFlex
+        ? `<span class="ml-1 text-[0.55rem] text-sky-500">flex</span>`
+        : "";
+
+      const profileTooltip = getProfileTooltipLD(p.tag);
+
+      const investmentPill = investmentTag
+        ? `<span class="inline-flex items-center px-1.5 py-0.5 ml-1 rounded-full text-[0.55rem] border ${invTone}" title="${invTooltip}">
+             ${investmentTag}
+           </span>`
+        : "";
+
+      return `
+        <tr class="hover:bg-orange-50/40 transition">
+          <td class="py-1.5 px-2 font-semibold text-gray-800">
+            ${p.name}${guestStar}
+            <span class="text-[0.6rem] text-gray-500 ml-1">(${p.displayRole})</span>
+            <div class="text-[0.55rem] text-gray-400">${p.roleMix}${flexMark}</div>
+          </td>
+          <td class="py-1.5 px-2 text-right ${lcColor}">
+            ${p.laneControl.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right ${relColor}">
+            ${p.reliability.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right text-gray-700">
+            ${p.selfLead ? p.selfLead.toFixed(0) + "%" : "—"}
+          </td>
+          <td class="py-1.5 px-2 text-right text-gray-700">
+            ${p.helpedLead ? p.helpedLead.toFixed(0) + "%" : "—"}
+          </td>
+          <td class="py-1.5 px-2 text-right ${playColor}">
+            ${p.playmaker.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right ${sinkColor}">
+            ${p.pressureSink.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right text-gray-500">
+            ${p.games}
+          </td>
+          <td class="py-1.5 px-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[0.6rem] border ${tagTone}" title="${profileTooltip}">
+              ${p.tag}
+            </span>
+            ${investmentPill}
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  const duoHeaderRow =
+    duoRows.length > 0
+      ? `
+      <tr class="bg-slate-50/80">
+        <td colspan="9" class="px-2 py-1.5 text-[0.65rem] font-semibold text-sky-700">
+          Botlane Duos (BOTTOM + SUPPORT)
+        </td>
+      </tr>`
+      : "";
+
+  const duoRowsHTML = duoRows
+    .map((d) => {
+      const lcColor =
+        d.laneControl >= 10
+          ? "text-emerald-600"
+          : d.laneControl >= 3
+          ? "text-sky-600"
+          : d.laneControl <= -8
+          ? "text-red-500"
+          : "text-gray-700";
+
+      const relColor =
+        d.reliability >= 70
+          ? "text-emerald-600"
+          : d.reliability <= 55
+          ? "text-red-500"
+          : "text-gray-700";
+
+      const playColor =
+        d.playmaker >= 12
+          ? "text-emerald-600"
+          : d.playmaker >= 6
+          ? "text-sky-600"
+          : "text-gray-500";
+
+      const sinkColor =
+        d.pressureSink >= 12 ? "text-red-500" : "text-gray-500";
+
+      const tagTone =
+        d.tag.includes("Rock")
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : d.tag.includes("Playmaker")
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : d.tag.includes("Pressure Sink")
+          ? "bg-red-50 text-red-700 border-red-100"
+          : "bg-slate-50 text-slate-700 border-slate-100";
+
+      const profileTooltip = getProfileTooltipLD(d.tag);
+
+      return `
+        <tr class="hover:bg-orange-50/40 transition">
+          <td class="py-1.5 px-2 font-semibold text-gray-800">
+            ${d.name}
+            <div class="text-[0.55rem] text-gray-400">${d.roleMix}</div>
+          </td>
+          <td class="py-1.5 px-2 text-right ${lcColor}">
+            ${d.laneControl.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right ${relColor}">
+            ${d.reliability.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right text-gray-400">—</td>
+          <td class="py-1.5 px-2 text-right text-gray-400">—</td>
+          <td class="py-1.5 px-2 text-right ${playColor}">
+            ${d.playmaker.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right ${sinkColor}">
+            ${d.pressureSink.toFixed(1)}%
+          </td>
+          <td class="py-1.5 px-2 text-right text-gray-500">
+            ${d.games}
+          </td>
+          <td class="py-1.5 px-2">
+            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[0.6rem] border ${tagTone}" title="${profileTooltip}">
+              ${d.tag}
+            </span>
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  // ---------- Mini cards ----------
+
+  const bestDuoCard = bestDuo
+    ? `
+      <div class="p-3 rounded-2xl bg-sky-50 border border-sky-100">
+        <div class="text-[0.65rem] font-semibold text-sky-600 uppercase mb-1">Most Reliable Botlane Duo</div>
+        <div class="text-sm font-semibold text-gray-900">${bestDuo.name}</div>
+        <div class="text-[0.7rem] text-gray-700">
+          Lane Control ${bestDuo.laneControl.toFixed(
+            1
+          )}%, Reliability ${bestDuo.reliability.toFixed(
+      1
+    )}% (${bestDuo.games} games)
+        </div>
+        <div class="text-[0.6rem] text-gray-500 mt-1">
+          Use this lane when you want stable early game and consistent setups.
+        </div>
+      </div>`
+    : `
+      <div class="p-3 rounded-2xl bg-sky-50 border border-dashed border-sky-100 text-[0.65rem] text-gray-500">
+        Not enough repeated BOTTOM+SUPPORT duos yet to highlight a reliable pairing.
+      </div>`;
+
+  const topPlaymakerCard = topPlaymaker
+    ? `
+      <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-100">
+        <div class="text-[0.65rem] font-semibold text-emerald-600 uppercase mb-1">Top Phase Playmaker</div>
+        <div class="text-sm font-semibold text-gray-900">
+          ${topPlaymaker.name}
+          <span class="text-[0.6rem] text-gray-500 ml-1">(${topPlaymaker.displayRole})</span>
+        </div>
+        <div class="text-[0.7rem] text-gray-700">
+          Roaming/Grouped while stable: ${topPlaymaker.playmaker.toFixed(
+            1
+          )}% of phase minutes.
+        </div>
+        <div class="text-[0.6rem] text-gray-500 mt-1">
+          Strong at moving first without bleeding lanes — draft tools that unlock this.
+        </div>
+      </div>`
+    : `
+      <div class="p-3 rounded-2xl bg-emerald-50/40 border border-dashed border-emerald-100 text-[0.6rem] text-gray-500">
+        No clear standout playmaker in this window/phase.
+      </div>`;
+
+  const flexCard =
+    flexCandidatesList.length > 0
+      ? `
+      <div class="p-3 rounded-2xl bg-amber-50 border border-amber-100">
+        <div class="text-[0.65rem] font-semibold text-amber-600 uppercase mb-1">Flex Candidates</div>
+        <div class="text-[0.7rem] text-gray-800">
+          ${flexCandidatesList
+            .map(
+              (f) => `
+              <div>
+                ${f.name} — strong ${f.secondaryRole} option
+                (${f.secondaryShare.toFixed(0)}% minutes,
+                Lane Control ${f.laneControl.toFixed(1)}%,
+                Rel ${f.reliability.toFixed(1)}%, ${f.games} games)
+              </div>`
+            )
+            .join("")}
+        </div>
+        <div class="text-[0.6rem] text-gray-500 mt-1">
+          Only players with meaningful secondary-role volume and solid impact are shown.
+          Use them as your primary flex levers on draft.
+        </div>
+      </div>`
+      : `
+      <div class="p-3 rounded-2xl bg-amber-50/40 border border-dashed border-amber-100 text-[0.6rem] text-gray-500">
+        No strong flex signals yet in this window/phase.
+      </div>`;
+
+  const jungleCards =
+    jungleProfiles.length > 0
+      ? `
+      <div class="mt-4">
+        <div class="text-[0.65rem] font-semibold text-sky-600 uppercase mb-1">Jungle Profiles</div>
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          ${jungleProfiles
+            .map(
+              (j) => `
+            <div class="min-w-[160px] p-3 rounded-2xl bg-slate-50 border border-slate-100">
+              <div class="text-[0.6rem] font-semibold text-sky-600 uppercase mb-0.5">
+                Jungle Profile
+              </div>
+              <div class="text-sm font-semibold text-gray-900">
+                ${j.player}
+                <span class="ml-1 text-[0.6rem] text-gray-500">${j.style}</span>
+              </div>
+              <div class="text-[0.6rem] text-gray-700 mt-0.5 leading-snug">
+                Obj presence: ${j.objPresence.toFixed(0)}%<br/>
+                Lead → Obj: ${j.leadObj.toFixed(0)}%<br/>
+                Gank vs Farm: ${j.gankShare.toFixed(0)}% / ${j.farmShare.toFixed(
+                  0
+                )}%<br/>
+                ${j.games} g, ${j.mins}m in phase
+              </div>
+            </div>`
+            )
+            .join("")}
+        </div>
+        <div class="text-[0.55rem] text-gray-500 mt-1">
+          Includes players with meaningful JUNGLE usage (≥10% of window minutes with enough games/minutes), including off-roles.
+        </div>
+      </div>`
+      : "";
+
+  // ---------- Render ----------
+
+  container.innerHTML = `
+    <section class="section-wrapper fade-in mb-10">
+      <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+          <div>
+            <h2 class="text-[1.05rem] font-semibold text-sky-500 tracking-tight">
+              Lane Dynamics & Playmakers
+            </h2>
+            <p class="text-[0.7rem] text-gray-600 max-w-xl">
+              Role-aware lane & map behaviour. Compares laners vs their direct opponents,
+              and interprets Jungle/Support via pressure, presence, and roaming instead of classic lane diff.
+            </p>
+            <p class="text-[0.6rem] text-gray-500">
+              Current phase:
+              <span class="font-semibold capitalize">${lanePhase}</span>,
+              Window:
+              <span class="font-semibold">
+                ${
+                  laneWindow === "season"
+                    ? "Season"
+                    : laneWindow === "split"
+                    ? "Current Split"
+                    : "Last " + laneWindow + " games"
+                }
+              </span>.
+            </p>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            ${windowButtons}
+            ${phaseButtons}
+            <div class="text-right text-[0.6rem] text-gray-500">
+              Timeline games in scope:
+              <span class="font-semibold text-gray-800">${timelineGamesInScope}</span><br/>
+              Includes core roster and guests (⭐ when &lt;10% of games in this window).
+            </div>
+          </div>
+        </div>
+
+        <div class="-mx-1 overflow-x-auto">
+          <table class="min-w-full text-[0.7rem] border-t border-gray-100">
+            <thead class="text-gray-500 bg-slate-50/80">
+              <tr>
+                <th class="text-left py-2 px-2">Player / Duo</th>
+                <th class="text-right py-2 px-2">Lane Control</th>
+                <th class="text-right py-2 px-2">Reliability</th>
+                <th class="text-right py-2 px-2">Self-Sufficient Lead</th>
+                <th class="text-right py-2 px-2">Helped Lead</th>
+                <th class="text-right py-2 px-2">Playmaker</th>
+                <th class="text-right py-2 px-2">Pressure Sink</th>
+                <th class="text-right py-2 px-2">Games</th>
+                <th class="text-left py-2 px-2">Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${playerRowsHTML}
+              ${duoHeaderRow}
+              ${duoRowsHTML}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="mt-4 grid md:grid-cols-3 gap-3">
+          ${bestDuoCard}
+          ${topPlaymakerCard}
+          ${flexCard}
+        </div>
+
+        ${jungleCards}
+
+        <div class="mt-3 text-[0.6rem] text-gray-500 leading-snug">
+          <p><strong>How to read:</strong></p>
+          <p>
+            <strong>Lane Control</strong>:
+            composite of gold/xp/cs diff vs lane opponent in the chosen phase.
+            <strong>Reliability</strong>:
+            minutes not significantly behind.
+            <strong>Self-Sufficient vs Helped Lead</strong>:
+            whether advantages come alone/2v2 vs heavy presence.
+            <strong>Playmaker</strong>:
+            time roaming / grouped / river while stable (Jungle/Support naturally higher).
+            <strong>Pressure Sink</strong>:
+            behind despite strong ally presence (tightened in mid/late to avoid noise).
+          </p>
+          <p>
+            <strong>Profiles</strong>:
+            Lane Rock, Resource Carry, Playmaker, Pressure Sink, High-Risk Roamer,
+            Guest (Small Sample), plus duo & jungle style tags.
+            <br/>
+            <strong>Investment tags</strong> (Island Safe, Invest Pays Off, Setup Lane, Needs Cover, Resource Trap, etc.)
+            highlight how lanes respond to jungle attention in this phase/window.
+            Built only from timeline behaviour; does <u>not</u> override Total Player Impact or Synergy scores.
+          </p>
+        </div>
+      </div>
+    </section>
+  `;
+
+  // ---------- Bind controls ----------
+
+  container.querySelectorAll("[data-lane-phase]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      lanePhase = btn.getAttribute("data-lane-phase");
+      if (
+        typeof cachedRows !== "undefined" &&
+        typeof cachedTimelineRows !== "undefined"
+      ) {
+        renderLaneDynamics(cachedRows, cachedTimelineRows);
+      }
+    });
+  });
+
+  container.querySelectorAll("[data-lane-window]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      laneWindow = btn.getAttribute("data-lane-window");
+      if (
+        typeof cachedRows !== "undefined" &&
+        typeof cachedTimelineRows !== "undefined"
+      ) {
+        renderLaneDynamics(cachedRows, cachedTimelineRows);
+      }
+    });
+  });
+
+  console.log("🧭 Lane Dynamics v2.1", {
+    phase: lanePhase,
+    window: laneWindow,
+    playerRows: withPlayerMetrics.length,
+    duos: duoRows.length,
+    jungleProfiles,
+  });
+}
+
+
+
 // ============================================================================
 // 📚 SPLIT SNAPSHOTS — v2.1
 // - Three equal-sized cards: Split 1 / Split 2 / Split 3
@@ -4110,7 +5217,7 @@ function renderSplits(splitsRaw) {
                 <th class="text-right py-1">KDA</th>
                 <th class="text-right py-1">KP</th>
                 <th class="text-right py-1">Trend</th>
-                <th class="text-right py-1">W%</</th>
+                <th class="text-right py-1">W%</th>
                 <th class="text-right py-1">G</th>
               </tr>
             </thead>
@@ -4244,3 +5351,4 @@ function renderSplits(splitsRaw) {
 
 // --- MAIN CALL ---
 loadData();
+loadTimelineData(); // 🔹 add this line

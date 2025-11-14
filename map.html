@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Les Nübs Minimap</title>
+  <style>
+    body { background:#111; color:#eee; font-family:sans-serif; }
+    #wrap { position:relative; width:512px; margin:20px auto; }
+    #map { width:512px; height:512px; display:block; }
+    #canvas { position:absolute; left:0; top:0; }
+  </style>
+</head>
+<body>
+<div id="wrap">
+  <img id="map" src="summoners_rift.png">
+  <canvas id="canvas" width="512" height="512"></canvas>
+</div>
+
+<script>
+  // CONFIG: Riot map coordinates ~ [0, 15000]
+  const MAP_MIN = 0;
+  const MAP_MAX = 15000;
+  const SIZE = 512;
+
+  // Example: load your les_nubs_timelines_final.csv via fetch if you run this with a local server
+  // Format: Match ID,Minute,Player,PosX,PosY,TeamId,...
+  async function loadData() {
+    const res = await fetch("les_nubs_timelines_final.csv");
+    const txt = await res.text();
+    const rows = txt.split("\n").slice(1).map(r => r.split(","));
+    // Filter one match as example
+    return rows
+      .filter(r => r[0] === "EUW1_7596792226" && r[1] === "10") // minute 10
+      .map(r => ({
+        player: r[2],
+        x: parseFloat(r[10]),
+        y: parseFloat(r[11]),
+        team: r[5]
+      }))
+      .filter(p => !isNaN(p.x) && !isNaN(p.y));
+  }
+
+  function mapCoord(v) {
+    return (v - MAP_MIN) / (MAP_MAX - MAP_MIN) * SIZE;
+  }
+
+  async function draw() {
+    const data = await loadData();
+    const c = document.getElementById("canvas");
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0,0,SIZE,SIZE);
+
+    data.forEach(p => {
+      const x = mapCoord(p.x);
+      const y = SIZE - mapCoord(p.y); // invert Y so it matches the map
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI*2);
+      ctx.fillStyle = p.team === "100" ? "rgba(80,150,255,0.9)" : "rgba(255,80,80,0.9)";
+      ctx.fill();
+    });
+  }
+
+  draw();
+</script>
+</body>
+</html>

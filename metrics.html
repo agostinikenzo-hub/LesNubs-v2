@@ -61,7 +61,7 @@
     <section class="w-full">
       <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
         <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
-          Metric Glossary — What We Track & Why
+          Metric Glossary — What We Track &amp; Why
         </h1>
         <p class="text-xs sm:text-sm text-gray-600 max-w-3xl">
           Every value on the dashboard comes from structured match logs or the Riot API.
@@ -135,6 +135,13 @@
                   data-topic="macro-advanced"
                 >
                   Macro &amp; Indices
+                </button>
+                <!-- New: Timeline & Lane Dynamics -->
+                <button
+                  class="metric-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  data-topic="timeline"
+                >
+                  Timeline &amp; Lane Dynamics
                 </button>
               </div>
             </div>
@@ -573,6 +580,104 @@
           sample:
             "Used only for jungle roles in TPI, scaled vs teammates.",
         },
+
+        // ================= TIMELINE & LANE DYNAMICS =================
+        {
+          id: "lane-control-phase",
+          topic: "timeline",
+          name: "Lane Control (Phase-Adjusted)",
+          source: "Timeline (Per Minute vs Lane Opponent)",
+          explain:
+            "Measures how much a player or duo wins lane in a specific phase/window, using gold, XP, and CS difference vs their direct opponent.",
+          calc:
+            "For each minute in the chosen phase: clamp gold/xp/cs diff vs opponent, convert to normalized score, average across minutes, then ×100 to show as a pseudo-% advantage.",
+          sample:
+            "Example: +12.5% Early Lane Control (Mid) over current split = usually ahead in lane without outside help.",
+        },
+        {
+          id: "lane-reliability-phase",
+          topic: "timeline",
+          name: "Reliability (Timeline)",
+          source: "Timeline",
+          explain:
+            "How often this player is not significantly behind in their lane during the selected phase.",
+          calc:
+            "Minutes where gold/xp/cs diff are above our 'hard losing' thresholds divided by all tracked minutes in that phase.",
+          sample:
+            "Example: 72% Early Reliability (Top) = in almost 3 out of 4 early-game minutes they’re at least stable.",
+        },
+        {
+          id: "self-vs-helped-lead",
+          topic: "timeline",
+          name: "Self-Sufficient & Helped Lead %",
+          source: "Timeline + Positioning",
+          explain:
+            "Splits their winning minutes into leads created mostly alone/2v2 vs leads created with heavy ally presence, to show if they need resources to get ahead.",
+          calc:
+            "On minutes with a meaningful lead: if close teammates ≤1 → Self-Sufficient; if ≥2 → Helped. Percentages are each bucket / all lead minutes.",
+          sample:
+            "Example: 93% Self-Sufficient, 7% Helped = lane usually wins without jungle camping.",
+        },
+        {
+          id: "playmaker-timeline",
+          topic: "timeline",
+          name: "Playmaker %",
+          source: "Timeline + Map Zones",
+          explain:
+            "How often a player leaves their home lane to be grouped, in river, or on proactive moves while not inting their own lane.",
+          calc:
+            "Minutes where the player is outside home lane AND (in river, grouped, or with ≥2 teammates nearby) AND not in a hard-losing state, divided by all minutes in phase.",
+          sample:
+            "Example: 16% Early Playmaker (Support) = frequently first on roams and setups.",
+        },
+        {
+          id: "pressure-sink-timeline",
+          topic: "timeline",
+          name: "Pressure Sink %",
+          source: "Timeline + Map Zones",
+          explain:
+            "Flags lanes that fall behind despite strong ally presence and a non-losing team state — places where resources vanish.",
+          calc:
+            "Minutes where player is significantly behind, has heavy ally presence, team not hard-losing; thresholds tighten in mid/late so we only keep meaningful sinks.",
+          sample:
+            "Example: 14% Early Pressure Sink (Bot) = lane often bleeds even when we play for it.",
+        },
+        {
+          id: "investment-tags",
+          topic: "timeline",
+          name: "Lane Investment Tags",
+          source: "Derived from Lane Control / Reliability / Lead Split",
+          explain:
+            "Short labels like Island Safe, Invest Pays Off, Setup Lane, Needs Cover, Resource Trap that tell junglers/coaches where attention tends to pay off in this phase.",
+          calc:
+            "Rule-based on Lane Control, Reliability, Self vs Helped Lead, and Pressure Sink, with stricter criteria in late game to avoid ARAM noise.",
+          sample:
+            "Example: Island Safe = wins/holds alone; Resource Trap = high help, poor results — stop autopiloting resources there.",
+        },
+        {
+          id: "botlane-duo-profiles",
+          topic: "timeline",
+          name: "Botlane Duo Profiles",
+          source: "Timeline (BOTTOM+SUPPORT)",
+          explain:
+            "Evaluates recurring botlane duos on lane control, reliability, playmaking and sink behaviour to highlight stable or explosive pairings.",
+          calc:
+            "Track minutes where a consistent BOTTOM+SUPPORT duo is together; compute shared Lane Control, Reliability, Playmaker %, Pressure Sink %, then tag as Lane Rock Duo, Playmaker Duo, Pressure Sink Duo, or Stable Duo.",
+          sample:
+            "Example: 29.9% Lane Control, 80.8% Reliability → Lane Rock Duo = safe blind lane to play around.",
+        },
+        {
+          id: "jungle-profile-timeline",
+          topic: "timeline",
+          name: "Jungle Profiles (Obj, Gank vs Farm)",
+          source: "Timeline (Jungle Minutes Only)",
+          explain:
+            "Describes how a jungler (including meaningful off-role junglers) behaves across phases: farm-heavy vs gank-heavy, presence on objectives, and how often leads turn into secured objectives.",
+          calc:
+            "Within jungle minutes: Obj Presence % = minutes near team objectives / jungle minutes; Lead→Obj % = objectives taken while ahead; Gank vs Farm = share of minutes on lanes/river vs farming alone. Only shown when jungle role is ≥10% of minutes with enough games.",
+          sample:
+            "Example: 36% Obj Presence, 70% Lead→Obj, 60/40 Gank/Farm = Objective Engine, good to trust with win conditions.",
+        },
       ];
 
       // Render function
@@ -617,6 +722,7 @@
           case "objectives": return "Objectives";
           case "teamfight": return "Teamfights & Synergy";
           case "macro-advanced": return "Macro & Indices";
+          case "timeline": return "Timeline & Lane Dynamics";
           default: return "Metric";
         }
       }
@@ -634,7 +740,7 @@
         btn.addEventListener("click", () => {
           const topic = btn.getAttribute("data-topic") || "all";
 
-          // active style
+          // active style reset
           filterButtons.forEach((b) => {
             b.classList.remove(
               "bg-orange-500",
@@ -645,23 +751,14 @@
             b.classList.add("bg-white", "text-gray-700", "border-gray-200");
           });
 
-          if (topic === "all") {
-            btn.classList.add(
-              "bg-orange-500",
-              "text-white",
-              "border-orange-500",
-              "shadow-sm"
-            );
-            btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
-          } else {
-            btn.classList.add(
-              "bg-orange-500",
-              "text-white",
-              "border-orange-500",
-              "shadow-sm"
-            );
-            btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
-          }
+          // set active
+          btn.classList.add(
+            "bg-orange-500",
+            "text-white",
+            "border-orange-500",
+            "shadow-sm"
+          );
+          btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
 
           // show / hide cards
           document.querySelectorAll(".metric-card").forEach((card) => {
