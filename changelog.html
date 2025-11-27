@@ -79,7 +79,27 @@
     <main class="w-full flex-1">
       <div class="max-w-5xl mx-auto px-4 pb-10 space-y-4">
        
-      
+      <!-- v4.0.0 -->
+<section class="section-wrapper">
+  <div class="dashboard-card">
+    <h2 class="text-lg font-semibold text-orange-500 mb-1">
+      Version 4.0 — Late November 2025
+    </h2>
+    <p class="text-[0.7rem] text-gray-500 mb-2">
+      Objectives / Timeline accuracy upgrade + role-aware objective attendance + UI cleanup.
+    </p>
+    <ul class="list-disc list-inside text-sm text-gray-700 space-y-1">
+      <li><strong>Objectives v2.8:</strong> Presence mini-cards now wrap in a responsive grid (no horizontal scroll) + cleaner/taller 2×2 stat layout.</li>
+      <li><strong>Timeline reliability:</strong> automatically infers <em>our</em> TeamId per match via roster overlap (no more hard-coded “200”).</li>
+      <li><strong>Objective counting fix:</strong> dedupes objective moments per <code>match + minute</code> (with a priority system so stacked events don’t double-count).</li>
+      <li><strong>Better presence logic:</strong> objective attendance is classified as <em>On-time</em> vs <em>Cross-pressure</em> vs <em>Late</em> for clearer macro reads.</li>
+      <li><strong>Role-aware attendance:</strong> “Obj. seen” can now differ between <em>Core</em> vs <em>Flex</em> by computing attendance per <code>(player, role, match)</code> and filtering flex rows to games actually played in that role.</li>
+      <li><strong>Extra objective context:</strong> adds objective-state snapshots in the timeline integration (gold/XP + grouping + vision deltas around takes) for better “why did this work?” answers.</li>
+    </ul>
+  </div>
+</section>
+
+
       <!-- v3.5.0 -->
 <section class="section-wrapper">
   <div class="dashboard-card">
@@ -254,3 +274,4 @@
     </footer>
   </body>
 </html>
+
