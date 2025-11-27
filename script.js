@@ -197,7 +197,7 @@ function renderAllSections(rows) {
   });
 
   // --- Safe render call helper ---
-  const safeRender = (fnName, fn, args) => {
+  const safeRender = (fnName, fn, args = []) => {
     try {
       if (typeof fn === "function") {
         fn(...args);
@@ -211,35 +211,80 @@ function renderAllSections(rows) {
   };
 
   // --- Render all sections safely ---
-// --- Render all sections safely ---
-safeRender("renderSummary", renderSummary, [splits["Season 25"]]);
-safeRender("renderObjectiveImpact", renderObjectiveImpact, [splits["Season 25"]]);
-safeRender("renderTeamSynergy", typeof renderTeamSynergy !== "undefined" ? renderTeamSynergy : null, [splits["Season 25"]]);
+  safeRender("renderSummary", renderSummary, [splits["Season 25"]]);
+
+  // 🔹 FIXED: pass data via args array instead of using logsData
+  safeRender("LastSessionCard", renderLastSessionCard, [splits["Season 25"]]);
+
+  safeRender("renderObjectiveImpact", renderObjectiveImpact, [splits["Season 25"]]);
+  safeRender(
+    "renderTeamSynergy",
+    typeof renderTeamSynergy !== "undefined" ? renderTeamSynergy : null,
+    [splits["Season 25"]]
+  );
+
   // --- Lane Dynamics (uses timeline sheet) ---
   if (typeof renderLaneDynamics !== "undefined") {
     if (cachedTimelineRows) {
-      safeRender("renderLaneDynamics", renderLaneDynamics, [splits["Season 25"], cachedTimelineRows]);
+      safeRender("renderLaneDynamics", renderLaneDynamics, [
+        splits["Season 25"],
+        cachedTimelineRows,
+      ]);
     } else {
       loadTimelineData()
         .then((timeline) => {
           if (timeline && timeline.length) {
-            safeRender("renderLaneDynamics", renderLaneDynamics, [splits["Season 25"], timeline]);
+            safeRender("renderLaneDynamics", renderLaneDynamics, [
+              splits["Season 25"],
+              timeline,
+            ]);
           }
         })
         .catch((err) => console.error("❌ Lane Dynamics render error:", err));
     }
   }
-// safeRender("renderPerformanceImpact", renderPerformanceImpact, [splits["Season 25"]]);
-safeRender("renderOverview", typeof renderOverview !== "undefined" ? renderOverview : null, [splits["Season 25"]]);
-//safeRender("renderTrends", renderTrends, [splits["Season 25"]]);
-safeRender("renderSplits", renderSplits, [splits]);
-safeRender("renderCharacterSelect", renderCharacterSelect, []);
 
+  // safeRender("renderPerformanceImpact", renderPerformanceImpact, [splits["Season 25"]]);
+  safeRender(
+    "renderOverview",
+    typeof renderOverview !== "undefined" ? renderOverview : null,
+    [splits["Season 25"]]
+  );
+  // safeRender("renderTrends", renderTrends, [splits["Season 25"]]);
+  safeRender("renderSplits", renderSplits, [splits]);
+  safeRender("renderCharacterSelect", renderCharacterSelect, []);
 
+  // 🔹 NEW: Objectives — First-hit impact card (uses timeline)
+  if (typeof renderObjectives !== "undefined") {
+    const callObjectives = (timeline) => {
+      safeRender("renderObjectives", renderObjectives, [
+        splits["Season 25"],
+        timeline || [],
+      ]);
+    };
 
-
-  console.log("✅ All available sections rendered");
+    if (cachedTimelineRows && cachedTimelineRows.length) {
+      // timeline already loaded
+      callObjectives(cachedTimelineRows);
+    } else {
+      // load it, then render
+      loadTimelineData()
+        .then((timeline) => {
+          if (timeline && timeline.length) {
+            callObjectives(timeline);
+          } else {
+            // still render, but with empty timeline to avoid the "not wired" copy
+            callObjectives([]);
+          }
+        })
+        .catch((err) => {
+          console.error("❌ Objectives timeline error:", err);
+          callObjectives([]); // graceful fallback
+        });
+    }
+  }
 }
+
 
 
 // --- CALCULATE PLAYER STATS ---
@@ -826,16 +871,495 @@ function renderMiniCard(
   `;
 }
 
+/// ============================================================================
+/// 🕒 LAST SESSION HIGHLIGHTS v1.3 (fixed "ALL participants" lists + HTML)
+/// - Uses rows from "test_logs_newdashboard"
+/// - Session = latest date (optionally + previous consecutive date)
+/// - Counts **unique games** via Game/Match ID (fallback: rows/5)
+/// - Only shows card if there are ≥4 games in the session
+/// - Metrics:
+///     • KDA, Vision Created, Pink Wards, Vision Score, Damage to Objectives
+///       => **per-game averages**
+///     • Dragon / Baron / Atakhan Participation
+///       => **games with participation / games played** (e.g. 3/4 (75%))
+///       => now shows **ALL** session participants (including 0/x)
+///     • Vision→Objective Ratio, Carry Impact, Team Contribution
+///       => per-game averages
+/// - Renders into #last-session
+/// ============================================================================
+
+function renderLastSessionCard(logsData) {
+  const container = document.getElementById("last-session");
+  if (!container || !logsData || !logsData.length) return;
+
+  // --- Helpers ---------------------------------------------------------------
+  const toNum = (v) => {
+    if (v === undefined || v === null || v === "") return 0;
+    const n = parseFloat(String(v).replace("%", "").replace(",", "."));
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const pickCol = (data, candidates) => {
+    if (!data || !data.length) return null;
+    const row = data[0];
+    for (let i = 0; i < candidates.length; i++) {
+      const c = candidates[i];
+      if (Object.prototype.hasOwnProperty.call(row, c)) return c;
+    }
+    return null;
+  };
+
+  const playerKey = (r) =>
+    r["Player"] || r["Summoner Name"] || r["Summoner"] || r["IGN"];
+
+  const getRawDateValue = (r) =>
+    r["Game Start Time"] ||
+    r["Game Date"] ||
+    r["Game Datetime"] ||
+    r["DateTime"] ||
+    r["Date"] ||
+    r["Match Date"] ||
+    r["Game Time"];
+
+  const parseDateTime = (val) => {
+    const s = String(val || "").trim();
+    if (!s) return null;
+
+    const native = new Date(s);
+    if (!isNaN(native.getTime())) return native;
+
+    const m = s.match(
+      /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?$/
+    );
+    if (m) {
+      let [, dd, mm, yy, HH, MM] = m;
+      const day = parseInt(dd, 10);
+      const month = parseInt(mm, 10) - 1;
+      let year = parseInt(yy, 10);
+      if (year < 100) year += 2000;
+      const hour = HH !== undefined ? parseInt(HH, 10) : 0;
+      const min = MM !== undefined ? parseInt(MM, 10) : 0;
+      const d = new Date(year, month, day, hour, min, 0);
+      if (!isNaN(d.getTime())) return d;
+    }
+
+    return null;
+  };
+
+  const formatDateLabel = (dateObj) => {
+    if (!dateObj) return "—";
+    const d = dateObj.getDate().toString().padStart(2, "0");
+    const m = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+    const y = dateObj.getFullYear().toString();
+    return `${d}.${m}.${y}`;
+  };
+
+  const dateKey = (d) => {
+    const y = d.getUTCFullYear();
+    const m = (d.getUTCMonth() + 1).toString().padStart(2, "0");
+    const day = d.getUTCDate().toString().padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
+  const diffDays = (d1, d2) => {
+    const t1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+    const t2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+    return Math.round((t1 - t2) / (1000 * 60 * 60 * 24));
+  };
+
+  // --- 1) Build date map & determine "Last Session" -------------------------
+  const datedRows = logsData
+    .map((r) => {
+      const raw = getRawDateValue(r);
+      const d = parseDateTime(raw);
+      return { row: r, dateObj: d };
+    })
+    .filter((x) => x.dateObj);
+
+  if (!datedRows.length) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-4">
+        <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 px-4 py-3">
+          <h2 class="text-[1rem] font-semibold text-slate-700">Last Session</h2>
+          <p class="text-[0.7rem] text-slate-500">
+            No valid date/time values found in <span class="font-semibold">test_logs_newdashboard</span>.
+            Once the log sheet has game timestamps, this card will highlight the latest session.
+          </p>
+        </div>
+      </section>`;
+    return;
+  }
+
+  const byDateKey = {};
+  const keyToDate = {};
+
+  datedRows.forEach(({ row, dateObj }) => {
+    const key = dateKey(dateObj);
+    if (!byDateKey[key]) {
+      byDateKey[key] = [];
+      keyToDate[key] = dateObj;
+    }
+    byDateKey[key].push(row);
+  });
+
+  const sortedKeys = Object.keys(byDateKey).sort((a, b) => (a < b ? -1 : 1));
+  if (!sortedKeys.length) return;
+
+  const latestKey = sortedKeys[sortedKeys.length - 1];
+  const latestDateObj = keyToDate[latestKey];
+  let sessionRows = [...byDateKey[latestKey]];
+  let sessionLabel = formatDateLabel(latestDateObj);
+
+  // Optionally extend session to previous consecutive day
+  if (sortedKeys.length >= 2) {
+    const prevKey = sortedKeys[sortedKeys.length - 2];
+    const prevDateObj = keyToDate[prevKey];
+    const dayDiff = diffDays(latestDateObj, prevDateObj);
+    if (dayDiff === 1) {
+      sessionRows = [...byDateKey[prevKey], ...sessionRows];
+      sessionLabel = `${formatDateLabel(prevDateObj)} – ${formatDateLabel(
+        latestDateObj
+      )}`;
+    }
+  }
+
+  // --- 1b) Count unique games instead of rows --------------------------------
+  const gameIdCol = pickCol(sessionRows, [
+    "Match ID",
+    "MatchId",
+    "Match ID (Riot)",
+    "Game ID",
+    "GameId",
+    "GameID",
+    "Game",
+    "Match",
+  ]);
+
+  let totalGames = 0;
+  if (gameIdCol) {
+    const gameSet = new Set();
+    sessionRows.forEach((r) => {
+      const v = r[gameIdCol];
+      if (v !== undefined && v !== null && String(v).trim() !== "") {
+        gameSet.add(String(v).trim());
+      }
+    });
+    totalGames = gameSet.size;
+  }
+
+  if (!totalGames) {
+    const ROWS_PER_GAME_GUESS = 5;
+    totalGames = Math.max(1, Math.round(sessionRows.length / ROWS_PER_GAME_GUESS));
+  }
+
+  if (totalGames < 4) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-4">
+        <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 px-4 py-3">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <h2 class="text-[1rem] font-semibold text-slate-700">Last Session</h2>
+            <span class="text-[0.65rem] text-slate-500">Session: ${sessionLabel}</span>
+          </div>
+          <p class="text-[0.7rem] text-slate-500">
+            Latest session only has <span class="font-semibold">${totalGames}</span> game${
+              totalGames === 1 ? "" : "s"
+            } (based on unique match IDs).
+            This card activates once a session reaches at least <span class="font-semibold">4 games</span>.
+          </p>
+        </div>
+      </section>`;
+    return;
+  }
+
+  // --- 2) Metric setup -------------------------------------------------------
+  const metricsConfig = [
+    { key: "kda", label: "Best KDA", icon: "⚔️", statType: "avg", colCandidates: ["KDA", "KDA Ratio", "K/D/A"], format: (v) => v.toFixed(2) },
+    { key: "visionCreated", label: "Most Vision Created (per game)", icon: "👁️", statType: "avg",
+      colCandidates: ["Vision Created", "VisionCreated", "Vision Created Score"], format: (v) => v.toFixed(1) },
+    { key: "pinkWards", label: "Control Wards (per game)", icon: "🏮", statType: "avg",
+      colCandidates: ["Pink Wards", "Pink Wards Placed", "Control Wards Placed"], format: (v) => v.toFixed(1) },
+    { key: "visionScore", label: "Best Vision Score (per game)", icon: "📡", statType: "avg",
+      colCandidates: ["Vision Score", "VisionScore"], format: (v) => Math.round(v).toString() },
+    { key: "dmgObj", label: "Damage to Objectives (per game)", icon: "🏹", statType: "avg",
+      colCandidates: ["Damage to Objectives", "DamageToObjectives", "Dmg To Objectives"], format: (v) => Math.round(v).toLocaleString("en-US") },
+
+    { key: "dragonPart", label: "Dragon Participation", icon: "🐉", statType: "participation", colCandidates: ["Dragon Participation", "Drake Participation"] },
+    { key: "baronPart", label: "Baron Participation", icon: "🧬", statType: "participation", colCandidates: ["Baron Participation"] },
+    { key: "atakhanPart", label: "Atakhan Participation", icon: "🔥", statType: "participation", colCandidates: ["Atakhan Participation"] },
+
+    { key: "visionObjRatio", label: "Vision to Objective Ratio", icon: "🎯", statType: "avg",
+      colCandidates: ["Vision to Objective Ratio", "Vision Obj Ratio"], format: (v) => v.toFixed(2) },
+    { key: "carryImpact", label: "Carry Impact Score", icon: "💥", statType: "avg",
+      colCandidates: ["Carry Impact Score"], format: (v) => v.toFixed(1) },
+    { key: "teamContribution", label: "Team Contribution", icon: "🤝", statType: "avg",
+      colCandidates: ["Team Contribution", "Team Contribution Score"], format: (v) => v.toFixed(1) },
+  ];
+
+  const activeMetrics = metricsConfig
+    .map((m) => {
+      const col = pickCol(sessionRows, m.colCandidates);
+      return col ? { ...m, colName: col } : null;
+    })
+    .filter(Boolean);
+
+  if (!activeMetrics.length) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-4">
+        <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 px-4 py-3">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <h2 class="text-[1rem] font-semibold text-slate-700">Last Session</h2>
+            <span class="text-[0.65rem] text-slate-500">Session: ${sessionLabel}</span>
+          </div>
+          <p class="text-[0.7rem] text-slate-500">
+            Found <span class="font-semibold">${totalGames}</span> games in the last session,
+            but none of the expected metric columns are present in
+            <span class="font-semibold">test_logs_newdashboard</span>.
+          </p>
+        </div>
+      </section>`;
+    return;
+  }
+
+  // --- 3) Aggregate per player (unique games per player; participation hits per game) ---
+  const resolveMatchId = (row) => {
+    const v =
+      (gameIdCol ? row[gameIdCol] : null) ||
+      row["Match ID"] ||
+      row["MatchId"] ||
+      row["Game ID"] ||
+      row["GameId"] ||
+      row["Game"] ||
+      row["Match"];
+    const s = String(v ?? "").trim();
+    return s ? s : null;
+  };
+
+  const playerStats = {}; // name -> { player, gameIds:Set, rowGames:number, metrics:{} }
+
+  sessionRows.forEach((row, rowIdx) => {
+    const name = playerKey(row);
+    if (!name) return;
+
+    if (!playerStats[name]) {
+      playerStats[name] = {
+        player: name,
+        gameIds: new Set(),
+        rowGames: 0, // fallback if match id is missing
+        metrics: {},
+      };
+    }
+
+    const p = playerStats[name];
+
+    const realId = resolveMatchId(row);
+    const syntheticId = `ROW:${name}:${p.rowGames}`; // stable per-player
+    const gameKey = realId || syntheticId;
+
+    p.rowGames += 1;
+    p.gameIds.add(gameKey);
+
+    activeMetrics.forEach((m) => {
+      const raw = row[m.colName];
+
+      if (!p.metrics[m.key]) {
+        p.metrics[m.key] = { sum: 0, count: 0 };
+        if (m.statType === "participation") {
+          p.metrics[m.key].hitGameIds = new Set();
+        }
+      }
+
+      // For participation we still want them included even if blank → blank just means "no hit"
+      if (raw === undefined || raw === null || raw === "") return;
+
+      let v;
+      if (typeof raw === "string" && raw.trim().endsWith("%")) {
+        const num = parseFloat(raw.replace("%", "").replace(",", "."));
+        v = Number.isFinite(num) ? num / 100 : 0;
+      } else {
+        v = toNum(raw);
+      }
+
+      const stat = p.metrics[m.key];
+      stat.sum += v;
+      stat.count += 1;
+
+      if (m.statType === "participation") {
+        if (v > 0) stat.hitGameIds.add(gameKey);
+      }
+    });
+  });
+
+  // --- 4) Build per-metric lists (ALL players for ALL metrics) -----------------
+const allPlayers = Object.values(playerStats).filter((p) => p.gameIds.size > 0);
+
+const metricLists = activeMetrics
+  .map((m) => {
+    const entries = [];
+
+    allPlayers.forEach((p) => {
+      const gamesPlayed = p.gameIds.size;
+
+      // Participation: hits/games for everyone (including 0/x)
+      if (m.statType === "participation") {
+        const stat = p.metrics[m.key];
+        const hits = stat?.hitGameIds ? stat.hitGameIds.size : 0;
+
+        entries.push({
+          player: p.player,
+          value: gamesPlayed ? hits / gamesPlayed : 0,
+          games: gamesPlayed,
+          metricHits: hits,
+          metricGames: gamesPlayed,
+        });
+        return;
+      }
+
+      // Avg metrics: include everyone, even if blank -> treat as 0 (but only if they played)
+      const stat = p.metrics[m.key];
+      const value =
+        stat && stat.count
+          ? (m.statType === "sum" ? stat.sum : stat.sum / stat.count)
+          : 0;
+
+      entries.push({
+        player: p.player,
+        value,
+        games: gamesPlayed,
+        metricHits: null,
+        metricGames: null,
+        hasValue: !!(stat && stat.count),
+      });
+    });
+
+    // Sort:
+    // - participation: ratio desc, then hits desc, then name
+    // - others: value desc, then (hasValue) desc, then name
+    entries.sort((a, b) => {
+      if (m.statType === "participation") {
+        if (b.value !== a.value) return b.value - a.value;
+        if ((b.metricHits || 0) !== (a.metricHits || 0))
+          return (b.metricHits || 0) - (a.metricHits || 0);
+        return a.player.localeCompare(b.player);
+      }
+
+      if (b.value !== a.value) return b.value - a.value;
+      if ((b.hasValue ? 1 : 0) !== (a.hasValue ? 1 : 0))
+        return (b.hasValue ? 1 : 0) - (a.hasValue ? 1 : 0);
+      return a.player.localeCompare(b.player);
+    });
+
+    return { metric: m, list: entries };
+  })
+  .filter((x) => x.list.length > 0);
+
+  // --- 5) Build HTML ---------------------------------------------------------
+  const miniCardsHTML = metricLists
+    .map(({ metric, list }) => {
+      const rowsHTML = list
+        .map((entry, idx) => {
+          const rank = idx + 1;
+
+          let labelValue;
+          if (metric.statType === "participation") {
+            const g = entry.metricGames || 0;
+            const h = entry.metricHits || 0;
+            const pct = g > 0 ? ((h / g) * 100).toFixed(0) : "0";
+            labelValue = g > 0 ? `${h}/${g} (${pct}%)` : `0/0`;
+          } else if (typeof metric.format === "function") {
+            labelValue = metric.format(entry.value);
+          } else {
+            labelValue = entry.value.toFixed(2);
+          }
+
+          return `
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-[0.65rem] text-slate-700 truncate">
+                ${rank}. ${entry.player}
+              </span>
+              <span class="text-[0.65rem] font-semibold text-slate-900 whitespace-nowrap">
+                ${labelValue}
+              </span>
+            </div>`;
+        })
+        .join("");
+
+      const listClass =
+        metric.statType === "participation"
+          ? "space-y-0.5 max-h-32 overflow-auto pr-1"
+          : "space-y-0.5";
+
+      return `
+        <div class="rounded-2xl border border-slate-100 bg-slate-50/70 px-3 py-2.5 flex flex-col">
+          <div class="flex items-center justify-between mb-1">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="text-[0.9rem]">${metric.icon}</span>
+              <span class="text-[0.7rem] font-semibold text-slate-800 truncate">
+                ${metric.label}
+              </span>
+            </div>
+            <span class="text-[0.6rem] text-slate-400">
+              ${metric.statType === "participation" ? "Players" : "Le Top du Top"}
+            </span>
+          </div>
+          <div class="${listClass}">
+            ${rowsHTML}
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  container.innerHTML = `
+    <section class="section-wrapper fade-in mb-4">
+      <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 px-4 py-3">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+          <div>
+            <h2 class="text-[1rem] font-semibold text-slate-800">Last Session</h2>
+            <p class="text-[0.7rem] text-slate-500">
+              Highlights from the most recent ${sessionLabel.includes("–") ? "session window" : "day"} —
+              <span class="font-semibold">${totalGames}</span> game${totalGames === 1 ? "" : "s"} from
+              <span class="font-semibold">${sessionLabel}</span>.
+              Only these games are used for the cards below.
+            </p>
+          </div>
+          <div class="text-[0.65rem] text-slate-500 text-right">
+            Source: <span class="font-mono text-slate-600">test_logs_newdashboard</span>
+          </div>
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          ${miniCardsHTML}
+        </div>
+
+        <p class="mt-2 text-[0.6rem] text-slate-400">
+          Metrics are aggregated per player <span class="font-semibold">only across games in this session</span>.
+          Most values are per-game averages; Dragon/Baron/Atakhan cards show
+          how many of the session's games each player participated in (hits/games).
+        </p>
+      </div>
+    </section>
+  `;
+
+  console.log("🕒 Last Session card rendered", {
+    sessionLabel,
+    totalGames,
+    activeMetrics: activeMetrics.map((m) => m.label),
+    players: Object.keys(playerStats),
+  });
+}
 
 
 
 
 // ============================================================================
-// ⭐ TOTAL PLAYER IMPACT — v1.0 (UI Refined)
-// - All calculations & weighting unchanged
-// - Cleaner card layout aligned with other dashboard sections
-// - No extra objective/side mini-cards inside this card
-// - Season label normalized to avoid "Season Season 25"
+// ⭐ TOTAL PLAYER IMPACT — v1.0 (UI Refined + Role Scores Patch)
+// - Impact calculations & weighting unchanged
+// - UI improvement:
+//   • Role mix chips (%, games) sorted by share
+//   • Flex label (UI only): "flex" if >=10% share in 2+ roles
+//   • NEW: show "role-fit score" per role played (projection / UI only)
+//     - This does NOT change the main Impact score
+//     - Role-fit score = same composites, but forced into a single role profile
+// - Clean table: show main role + up to 2 extra role chips, rest in "+N" tooltip
 // Renders into #objective-impact
 // ============================================================================
 
@@ -868,6 +1392,17 @@ function renderObjectiveImpact(data) {
   const getGameId = (r) =>
     r["Match ID"] || r["Game #"] || r["Game ID"] || r["Date"];
 
+  // ---------- Role UI rules (NO score changes) ----------
+  const FLEX_ROLE_SHARE = 0.10; // >=10% share in 2+ roles => flex label
+  const SHOW_ROLE_SHARE = 0.10; // show roles >=10% (and always show main role)
+  const MAX_ROLE_CHIPS = 3; // main + two extras (rest goes into "+N")
+  const roleShort = (r) => {
+    const R = String(r || "").toUpperCase();
+    if (R === "JUNGLE") return "JNG";
+    if (R === "SUPPORT") return "SUP";
+    return R || "MID";
+  };
+
   // ---------- Detect current season & split from our games ----------
   const ourRowsAll = data.filter(isOurTeam);
   const seasonSource = ourRowsAll.length ? ourRowsAll : data;
@@ -879,9 +1414,7 @@ function renderObjectiveImpact(data) {
         .filter(Boolean)
     ),
   ];
-  const currentSeason = seasons.length
-    ? seasons[seasons.length - 1]
-    : "2025";
+  const currentSeason = seasons.length ? seasons[seasons.length - 1] : "2025";
 
   // Normalize for label (avoid "Season Season 25")
   const currentSeasonLabel = (() => {
@@ -899,14 +1432,11 @@ function renderObjectiveImpact(data) {
   const splitNums = splitSource
     .map((r) => normSplitNum(r["Split"]))
     .filter((n) => n !== null);
-  const currentSplit =
-    splitNums.length > 0 ? Math.max(...splitNums) : null;
+  const currentSplit = splitNums.length > 0 ? Math.max(...splitNums) : null;
 
   // ---------- Filter by window ----------
   const getRecentGames = (n) => {
-    const allGames = data
-      .map((r) => getGameId(r))
-      .filter(Boolean);
+    const allGames = data.map((r) => getGameId(r)).filter(Boolean);
     const uniqueGames = [...new Set(allGames)];
     const recentGames = uniqueGames.slice(-n);
     return data.filter((r) => recentGames.includes(getGameId(r)));
@@ -920,13 +1450,9 @@ function renderObjectiveImpact(data) {
         return getRecentGames(10);
       case "split":
         if (currentSplit === null) return data;
-        return data.filter(
-          (r) => normSplitNum(r["Split"]) === currentSplit
-        );
+        return data.filter((r) => normSplitNum(r["Split"]) === currentSplit);
       case "season":
-        return data.filter(
-          (r) => normSeason(r["Season"]) === currentSeason
-        );
+        return data.filter((r) => normSeason(r["Season"]) === currentSeason);
       default:
         return data;
     }
@@ -974,49 +1500,35 @@ function renderObjectiveImpact(data) {
     (r) => String(r["Result"]).toLowerCase() === "win"
   ).length;
 
-  const blueWinrate = blueGames.length
-    ? (blueWins / blueGames.length) * 100
-    : 0;
-  const redWinrate = redGames.length
-    ? (redWins / redGames.length) * 100
-    : 0;
+  const blueWinrate = blueGames.length ? (blueWins / blueGames.length) * 100 : 0;
+  const redWinrate = redGames.length ? (redWins / redGames.length) * 100 : 0;
 
   // ---------- Objective summary (unchanged calculations; stored for trends) ----------
   const calcObjective = (killsKey, firstKey, emoji, label) => {
     const controlGames = uniqueMatches.filter(
       (r) =>
-        String(r[firstKey]).toUpperCase() === "TRUE" ||
-        toNum(r[killsKey]) > 0
+        String(r[firstKey]).toUpperCase() === "TRUE" || toNum(r[killsKey]) > 0
     );
 
     const controlPct = (controlGames.length / totalGames) * 100;
 
     const winrateWhenSecured = controlGames.length
-      ? (controlGames.filter(
-          (r) => String(r["Result"]).toLowerCase() === "win"
-        ).length /
+      ? (controlGames.filter((r) => String(r["Result"]).toLowerCase() === "win")
+          .length /
           controlGames.length) *
         100
       : 0;
 
     const prev = previousObjSummary[label] || {};
     const delta =
-      typeof prev.winrate === "number"
-        ? winrateWhenSecured - prev.winrate
-        : 0;
+      typeof prev.winrate === "number" ? winrateWhenSecured - prev.winrate : 0;
 
     previousObjSummary[label] = {
       control: controlPct,
       winrate: winrateWhenSecured,
     };
 
-    return {
-      emoji,
-      label,
-      control: controlPct,
-      winrate: winrateWhenSecured,
-      delta,
-    };
+    return { emoji, label, control: controlPct, winrate: winrateWhenSecured, delta };
   };
 
   const objectiveCards = [
@@ -1024,29 +1536,12 @@ function renderObjectiveImpact(data) {
     calcObjective("Herald Kills", "First Herald (Team)", "🪄", "Herald"),
     calcObjective("Baron Kills", "First Baron (Team)", "👑", "Baron"),
     calcObjective("Tower Kills", "First Tower (Team)", "🏰", "Tower"),
-    calcObjective(
-      "Atakhan Participation",
-      "First Atakhan (Team)",
-      "🔥",
-      "Atakhan"
-    ),
-    calcObjective(
-      "Void Grub Participation",
-      "First Void Grub (Team)",
-      "🪲",
-      "Void Grub"
-    ),
+    calcObjective("Atakhan Participation", "First Atakhan (Team)", "🔥", "Atakhan"),
+    calcObjective("Void Grub Participation", "First Void Grub (Team)", "🪲", "Void Grub"),
   ];
 
   // ---------- Adaptive Objective Weights (unchanged) ----------
-  const objectivesList = [
-    "Dragon",
-    "Herald",
-    "Baron",
-    "Tower",
-    "Atakhan",
-    "Void Grub",
-  ];
+  const objectivesList = ["Dragon", "Herald", "Baron", "Tower", "Atakhan", "Void Grub"];
 
   const staticDefaults = {
     Dragon: 0.25,
@@ -1077,9 +1572,7 @@ function renderObjectiveImpact(data) {
     const firstKey = `First ${obj} (Team)`;
 
     const secured = uniqueMatches.filter(
-      (r) =>
-        String(r[firstKey]).toUpperCase() === "TRUE" ||
-        toNum(r[killsKey]) > 0
+      (r) => String(r[firstKey]).toUpperCase() === "TRUE" || toNum(r[killsKey]) > 0
     );
     const notSecured = uniqueMatches.filter((r) => !secured.includes(r));
 
@@ -1089,14 +1582,12 @@ function renderObjectiveImpact(data) {
     }
 
     const winSecured =
-      secured.filter(
-        (r) => String(r["Result"]).toLowerCase() === "win"
-      ).length / Math.max(1, secured.length);
+      secured.filter((r) => String(r["Result"]).toLowerCase() === "win").length /
+      Math.max(1, secured.length);
 
     const winNot =
-      notSecured.filter(
-        (r) => String(r["Result"]).toLowerCase() === "win"
-      ).length / Math.max(1, notSecured.length);
+      notSecured.filter((r) => String(r["Result"]).toLowerCase() === "win").length /
+      Math.max(1, notSecured.length);
 
     importance[obj] = Math.max(0, winSecured - winNot);
   });
@@ -1107,17 +1598,12 @@ function renderObjectiveImpact(data) {
   const objWeights = {};
   objectivesList.forEach((obj) => {
     const adaptive =
-      totalImp > 0 && importance[obj]
-        ? importance[obj] / totalImp
-        : staticDefaults[obj];
+      totalImp > 0 && importance[obj] ? importance[obj] / totalImp : staticDefaults[obj];
     objWeights[obj] = 0.7 * adaptive + 0.3 * staticDefaults[obj];
   });
 
-  const totalW =
-    Object.values(objWeights).reduce((a, b) => a + b, 0) || 1;
-  Object.keys(objWeights).forEach(
-    (k) => (objWeights[k] = objWeights[k] / totalW)
-  );
+  const totalW = Object.values(objWeights).reduce((a, b) => a + b, 0) || 1;
+  Object.keys(objWeights).forEach((k) => (objWeights[k] = objWeights[k] / totalW));
 
   // ---------- Per-player aggregation (unchanged) ----------
   const playerStats = {};
@@ -1158,7 +1644,6 @@ function renderObjectiveImpact(data) {
     }
 
     const s = playerStats[name];
-
     if (matchId) s.gamesSet.add(matchId);
 
     const metrics = [
@@ -1239,322 +1724,196 @@ function renderObjectiveImpact(data) {
     s.perfRatingSum += pr;
 
     if (!roleFrequency[name]) roleFrequency[name] = {};
-    if (role) {
-      roleFrequency[name][role] =
-        (roleFrequency[name][role] || 0) + 1;
-    }
+    if (role) roleFrequency[name][role] = (roleFrequency[name][role] || 0) + 1;
   });
 
-  let playerStatsArr = Object.entries(playerStats).map(
-    ([name, s]) => {
-      const games = s.gamesSet.size || 1;
-      const avg = (key) =>
-        (s.totals[key] || 0) / games;
+  let playerStatsArr = Object.entries(playerStats).map(([name, s]) => {
+    const games = s.gamesSet.size || 1;
+    const avg = (key) => (s.totals[key] || 0) / games;
 
-      const control =
-        (avg("Objective Control Balance") +
-          avg("Baron Control %") +
-          avg("Tower Control %")) /
-        3;
+    const control =
+      (avg("Objective Control Balance") + avg("Baron Control %") + avg("Tower Control %")) / 3;
 
-      const conversion =
-        (avg("Objective Conversion Rate") +
-          avg("Objective Kills") +
-          avg("Early Objective Ratio")) /
-        3;
+    const conversion =
+      (avg("Objective Conversion Rate") + avg("Objective Kills") + avg("Early Objective Ratio")) /
+      3;
 
-      const participation =
-        avg("Dragon Participation") * (objWeights.Dragon || 0) +
-        avg("Herald Participation") * (objWeights.Herald || 0) +
-        avg("Baron Participation") * (objWeights.Baron || 0) +
-        avg("Tower Participation") * (objWeights.Tower || 0) +
-        avg("Atakhan Participation") *
-          (objWeights.Atakhan || 0) +
-        avg("Void Grub Participation") *
-          (objWeights["Void Grub"] || 0);
+    const participation =
+      avg("Dragon Participation") * (objWeights.Dragon || 0) +
+      avg("Herald Participation") * (objWeights.Herald || 0) +
+      avg("Baron Participation") * (objWeights.Baron || 0) +
+      avg("Tower Participation") * (objWeights.Tower || 0) +
+      avg("Atakhan Participation") * (objWeights.Atakhan || 0) +
+      avg("Void Grub Participation") * (objWeights["Void Grub"] || 0);
 
-      const vision =
-        (avg("Vision Advantage") +
-          avg("Vision-Objective Sync") +
-          avg("Vision to Objective Ratio") +
-          avg("Vision Denial Efficiency") +
-          avg("Vision Impact Factor")) /
-        5;
+    const vision =
+      (avg("Vision Advantage") +
+        avg("Vision-Objective Sync") +
+        avg("Vision to Objective Ratio") +
+        avg("Vision Denial Efficiency") +
+        avg("Vision Impact Factor")) /
+      5;
 
-      const tempo =
-        (avg("Tempo Efficiency Index") +
-          avg("Tempo Leader Index") +
-          avg("Early Gold Share") +
-          avg("Gold Momentum Rate") +
-          avg("Macro Consistency") +
-          avg("Macro Strength Index") +
-          avg("Comeback Index")) /
-        7;
+    const tempo =
+      (avg("Tempo Efficiency Index") +
+        avg("Tempo Leader Index") +
+        avg("Early Gold Share") +
+        avg("Gold Momentum Rate") +
+        avg("Macro Consistency") +
+        avg("Macro Strength Index") +
+        avg("Comeback Index")) /
+      7;
 
-      const consistency =
-        (avg("Synergy Index") +
-          avg("Shared Participation Rate") +
-          avg("Team Coordination Efficiency") +
-          avg("Teamfight Efficiency") +
-          avg("Consistency Index") +
-          avg("Momentum Stability")) /
-        6;
+    const consistency =
+      (avg("Synergy Index") +
+        avg("Shared Participation Rate") +
+        avg("Team Coordination Efficiency") +
+        avg("Teamfight Efficiency") +
+        avg("Consistency Index") +
+        avg("Momentum Stability")) /
+      6;
 
-      const killsPg = s.kills / games;
-      const deathsPg = s.deaths / games;
-      const assistsPg = s.assists / games;
-      const avgKDA = s.kdaSum / games;
-      const avgKP =
-        s.kpCount > 0 ? s.kpSum / s.kpCount : 0;
-      const avgDmgShare =
-        s.dmgShareSum / games;
-      const avgDPM = s.dpmSum / games;
-      const avgGoldMin =
-        s.goldMinSum / games;
-      const avgCSMin =
-        s.csMinSum / games;
-      const avgSolo =
-        s.soloKills / games;
-      const avgPlates =
-        s.plates / games;
-      const avgMech =
-        s.mechSum / games;
-      const avgTact =
-        s.tactSum / games;
-      const avgCarry =
-        s.carrySum / games;
-      const avgPerfRating =
-        s.perfRatingSum / games;
+    const killsPg = s.kills / games;
+    const deathsPg = s.deaths / games;
+    const assistsPg = s.assists / games;
+    const avgKDA = s.kdaSum / games;
+    const avgKP = s.kpCount > 0 ? s.kpSum / s.kpCount : 0;
+    const avgDmgShare = s.dmgShareSum / games;
+    const avgDPM = s.dpmSum / games;
+    const avgGoldMin = s.goldMinSum / games;
+    const avgCSMin = s.csMinSum / games;
+    const avgSolo = s.soloKills / games;
+    const avgPlates = s.plates / games;
+    const avgMech = s.mechSum / games;
+    const avgTact = s.tactSum / games;
+    const avgCarry = s.carrySum / games;
+    const avgPerfRating = s.perfRatingSum / games;
 
-      return {
-        name,
-        role: s.role,
-        games,
-        control,
-        conversion,
-        participation,
-        vision,
-        tempo,
-        consistency,
-        indiv: {
-          avgKDA,
-          avgKP,
-          avgDmgShare,
-          avgDPM,
-          avgGoldMin,
-          avgCSMin,
-          avgSolo,
-          avgPlates,
-          deathsPg,
-          avgMech,
-          avgTact,
-          avgCarry,
-          avgPerfRating,
-          killsPg,
-          assistsPg,
-        },
-        impact: 0,
-        delta: 0,
-      };
-    }
-  );
+    return {
+      name,
+      role: s.role,
+      games,
+      control,
+      conversion,
+      participation,
+      vision,
+      tempo,
+      consistency,
+      indiv: {
+        avgKDA,
+        avgKP,
+        avgDmgShare,
+        avgDPM,
+        avgGoldMin,
+        avgCSMin,
+        avgSolo,
+        avgPlates,
+        deathsPg,
+        avgMech,
+        avgTact,
+        avgCarry,
+        avgPerfRating,
+        killsPg,
+        assistsPg,
+      },
+      impact: 0,
+      delta: 0,
+    };
+  });
 
   if (!playerStatsArr.length) return;
 
   // ---------- Normalization helpers ----------
   const buildMinMax = (vals) => {
-    const v = vals.filter(
-      (x) => typeof x === "number" && !isNaN(x)
-    );
+    const v = vals.filter((x) => typeof x === "number" && !isNaN(x));
     if (!v.length) return { min: 0, max: 1 };
-    return {
-      min: Math.min(...v),
-      max: Math.max(...v),
-    };
+    return { min: Math.min(...v), max: Math.max(...v) };
   };
 
   const norm = (v, mm, invert = false) => {
     const { min, max } = mm;
-    if (!isFinite(min) || !isFinite(max) || max === min)
-      return 0.5;
+    if (!isFinite(min) || !isFinite(max) || max === min) return 0.5;
     let x = (v - min) / (max - min);
     x = Math.max(0, Math.min(1, x));
     return invert ? 1 - x : x;
   };
 
-  const mmControl = buildMinMax(
-    playerStatsArr.map((p) => p.control)
-  );
-  const mmConversion = buildMinMax(
-    playerStatsArr.map((p) => p.conversion)
-  );
-  const mmPart = buildMinMax(
-    playerStatsArr.map((p) => p.participation)
-  );
-  const mmVision = buildMinMax(
-    playerStatsArr.map((p) => p.vision)
-  );
-  const mmTempo = buildMinMax(
-    playerStatsArr.map((p) => p.tempo)
-  );
-  const mmConsist = buildMinMax(
-    playerStatsArr.map((p) => p.consistency)
-  );
+  const mmControl = buildMinMax(playerStatsArr.map((p) => p.control));
+  const mmConversion = buildMinMax(playerStatsArr.map((p) => p.conversion));
+  const mmPart = buildMinMax(playerStatsArr.map((p) => p.participation));
+  const mmVision = buildMinMax(playerStatsArr.map((p) => p.vision));
+  const mmTempo = buildMinMax(playerStatsArr.map((p) => p.tempo));
+  const mmConsist = buildMinMax(playerStatsArr.map((p) => p.consistency));
 
-  const mmKDA = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgKDA)
-  );
-  const mmKP = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgKP)
-  );
-  const mmDmgShare = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgDmgShare)
-  );
-  const mmDPM = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgDPM)
-  );
-  const mmGold = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgGoldMin)
-  );
-  const mmCS = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgCSMin)
-  );
-  const mmSolo = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgSolo)
-  );
-  const mmPlates = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgPlates)
-  );
-  const mmDeaths = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.deathsPg)
-  );
-  const mmMech = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgMech)
-  );
-  const mmTact = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgTact)
-  );
-  const mmCarry = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgCarry)
-  );
-  const mmPR = buildMinMax(
-    playerStatsArr.map((p) => p.indiv.avgPerfRating)
-  );
+  const mmKDA = buildMinMax(playerStatsArr.map((p) => p.indiv.avgKDA));
+  const mmKP = buildMinMax(playerStatsArr.map((p) => p.indiv.avgKP));
+  const mmDmgShare = buildMinMax(playerStatsArr.map((p) => p.indiv.avgDmgShare));
+  const mmDPM = buildMinMax(playerStatsArr.map((p) => p.indiv.avgDPM));
+  const mmGold = buildMinMax(playerStatsArr.map((p) => p.indiv.avgGoldMin));
+  const mmCS = buildMinMax(playerStatsArr.map((p) => p.indiv.avgCSMin));
+  const mmSolo = buildMinMax(playerStatsArr.map((p) => p.indiv.avgSolo));
+  const mmPlates = buildMinMax(playerStatsArr.map((p) => p.indiv.avgPlates));
+  const mmDeaths = buildMinMax(playerStatsArr.map((p) => p.indiv.deathsPg));
+  const mmMech = buildMinMax(playerStatsArr.map((p) => p.indiv.avgMech));
+  const mmTact = buildMinMax(playerStatsArr.map((p) => p.indiv.avgTact));
+  const mmCarry = buildMinMax(playerStatsArr.map((p) => p.indiv.avgCarry));
+  const mmPR = buildMinMax(playerStatsArr.map((p) => p.indiv.avgPerfRating));
 
-  // ---------- Role-weighted composites ----------
+  // ---------- Role-weighted composites (unchanged calculations; + role-fit score projection) ----------
   playerStatsArr = playerStatsArr.map((p) => {
     const freq = roleFrequency[p.name] || {};
-    let roleFractions = Object.entries(freq);
-    const totalGamesRole = roleFractions.reduce(
-      (a, [, c]) => a + c,
-      0
-    );
+    let roleFractions = Object.entries(freq); // [role, count]
+    const totalGamesRole = roleFractions.reduce((a, [, c]) => a + c, 0);
 
     if (!totalGamesRole) {
       roleFractions = [[(p.role || "MID").toUpperCase(), 1]];
     } else {
-      roleFractions = roleFractions.map(([r, c]) => [
-        r,
-        c / totalGamesRole,
-      ]);
+      roleFractions = roleFractions.map(([r, c]) => [String(r || "MID").toUpperCase(), c / totalGamesRole]);
     }
 
     roleFractions.sort((a, b) => b[1] - a[1]);
-    const [mainRole, mainShare] =
-      roleFractions[0] || ["MID", 1];
-    const flex =
-      roleFractions.length >= 2 &&
-      roleFractions.filter(([, share]) => share >= 0.2)
-        .length >= 2;
+    const [mainRole, mainShare] = roleFractions[0] || ["MID", 1];
 
+    // ✅ Flex label (UI only): >=10% role share in 2+ roles
+    const flex = roleFractions.filter(([, share]) => share >= FLEX_ROLE_SHARE).length >= 2;
+
+    // roleBreakdown for chips (keep count via freq)
+    const roleBreakdown = roleFractions.map(([r, share]) => ({
+      role: r,
+      share,
+      count: freq[r] || 0,
+    }));
+
+    // --- role-mix amplification (unchanged) ---
     const ampMin = 0.05;
     const ampMax = 0.2;
     const amplification =
-      mainShare <= 0.55
-        ? 0
-        : Math.min(
-            ampMax,
-            ampMin + (mainShare - 0.55) * 0.5
-          );
+      mainShare <= 0.55 ? 0 : Math.min(ampMax, ampMin + (mainShare - 0.55) * 0.5);
 
     const adjustedFreq = {};
     roleFractions.forEach(([role, share]) => {
-      adjustedFreq[role] =
-        role === mainRole
-          ? share * (1 + amplification)
-          : share;
+      adjustedFreq[role] = role === mainRole ? share * (1 + amplification) : share;
     });
-    const sumAdj =
-      Object.values(adjustedFreq).reduce(
-        (a, b) => a + b,
-        0
-      ) || 1;
-    Object.keys(adjustedFreq).forEach(
-      (k) => (adjustedFreq[k] /= sumAdj)
-    );
+    const sumAdj = Object.values(adjustedFreq).reduce((a, b) => a + b, 0) || 1;
+    Object.keys(adjustedFreq).forEach((k) => (adjustedFreq[k] /= sumAdj));
 
+    // --- role weight profiles (unchanged) ---
     const roleWeights = {
-      JUNGLE: {
-        control: 0.3,
-        conversion: 0.2,
-        participation: 0.2,
-        vision: 0.1,
-        tempo: 0.15,
-        consistency: 0.05,
-      },
-      SUPPORT: {
-        control: 0.15,
-        conversion: 0.15,
-        participation: 0.2,
-        vision: 0.3,
-        tempo: 0.1,
-        consistency: 0.1,
-      },
-      TOP: {
-        control: 0.25,
-        conversion: 0.25,
-        participation: 0.2,
-        vision: 0.1,
-        tempo: 0.1,
-        consistency: 0.1,
-      },
-      MID: {
-        control: 0.2,
-        conversion: 0.25,
-        participation: 0.2,
-        vision: 0.15,
-        tempo: 0.1,
-        consistency: 0.1,
-      },
-      ADC: {
-        control: 0.2,
-        conversion: 0.25,
-        participation: 0.25,
-        vision: 0.1,
-        tempo: 0.1,
-        consistency: 0.1,
-      },
+      JUNGLE: { control: 0.3, conversion: 0.2, participation: 0.2, vision: 0.1, tempo: 0.15, consistency: 0.05 },
+      SUPPORT: { control: 0.15, conversion: 0.15, participation: 0.2, vision: 0.3, tempo: 0.1, consistency: 0.1 },
+      TOP: { control: 0.25, conversion: 0.25, participation: 0.2, vision: 0.1, tempo: 0.1, consistency: 0.1 },
+      MID: { control: 0.2, conversion: 0.25, participation: 0.2, vision: 0.15, tempo: 0.1, consistency: 0.1 },
+      ADC: { control: 0.2, conversion: 0.25, participation: 0.25, vision: 0.1, tempo: 0.1, consistency: 0.1 },
     };
 
-    const blended = {
-      control: 0,
-      conversion: 0,
-      participation: 0,
-      vision: 0,
-      tempo: 0,
-      consistency: 0,
-    };
+    // --- blend weights by real role mix (unchanged) ---
+    const blended = { control: 0, conversion: 0, participation: 0, vision: 0, tempo: 0, consistency: 0 };
+    Object.entries(adjustedFreq).forEach(([role, frac]) => {
+      const base = roleWeights[role] || roleWeights.MID;
+      Object.keys(blended).forEach((k) => (blended[k] += base[k] * frac));
+    });
 
-    Object.entries(adjustedFreq).forEach(
-      ([role, frac]) => {
-        const base =
-          roleWeights[role] || roleWeights.MID;
-        Object.keys(blended).forEach((k) => {
-          blended[k] += base[k] * frac;
-        });
-      }
-    );
-
+    // --- normalized dimensions ---
     const nControl = norm(p.control, mmControl);
     const nConv = norm(p.conversion, mmConversion);
     const nPart = norm(p.participation, mmPart);
@@ -1570,45 +1929,21 @@ function renderObjectiveImpact(data) {
       blended.tempo * nTempo +
       blended.consistency * nCons;
 
+    // --- individual composite (unchanged) ---
     const I = p.indiv;
     const nKDA = norm(I.avgKDA, mmKDA);
     const nKP = norm(I.avgKP, mmKP);
-    const nDmgShare = norm(
-      I.avgDmgShare,
-      mmDmgShare
-    );
+    const nDmgShare = norm(I.avgDmgShare, mmDmgShare);
     const nDPM = norm(I.avgDPM, mmDPM);
-    const nGold = norm(
-      I.avgGoldMin,
-      mmGold
-    );
+    const nGold = norm(I.avgGoldMin, mmGold);
     const nCS = norm(I.avgCSMin, mmCS);
     const nSolo = norm(I.avgSolo, mmSolo);
-    const nPlates = norm(
-      I.avgPlates,
-      mmPlates
-    );
-    const nSafe = norm(
-      I.deathsPg,
-      mmDeaths,
-      true
-    );
-    const nMech = norm(
-      I.avgMech,
-      mmMech
-    );
-    const nTact = norm(
-      I.avgTact,
-      mmTact
-    );
-    const nCarry = norm(
-      I.avgCarry,
-      mmCarry
-    );
-    const nPR = norm(
-      I.avgPerfRating,
-      mmPR
-    );
+    const nPlates = norm(I.avgPlates, mmPlates);
+    const nSafe = norm(I.deathsPg, mmDeaths, true);
+    const nMech = norm(I.avgMech, mmMech);
+    const nTact = norm(I.avgTact, mmTact);
+    const nCarry = norm(I.avgCarry, mmCarry);
+    const nPR = norm(I.avgPerfRating, mmPR);
 
     const indivComposite =
       0.18 * nKDA +
@@ -1625,20 +1960,50 @@ function renderObjectiveImpact(data) {
       0.05 * nPR +
       0.05 * nSafe;
 
-    const totalCompositeRaw =
-      0.55 * indivComposite +
-      0.45 * objComposite;
+    const totalCompositeRaw = 0.55 * indivComposite + 0.45 * objComposite;
+
+    // ✅ NEW (UI only): role-fit score projection for roles they played (>=10% or main)
+    // (This does NOT affect impact; it's just "if evaluated as pure ROLE")
+    const computeRoleObjComposite = (roleKey) => {
+      const w = roleWeights[roleKey] || roleWeights.MID;
+      return (
+        w.control * nControl +
+        w.conversion * nConv +
+        w.participation * nPart +
+        w.vision * nVis +
+        w.tempo * nTempo +
+        w.consistency * nCons
+      );
+    };
+
+    const BASE = 40;
+    const SCALE = 100 - BASE;
+
+    const roleScores = {};
+    roleBreakdown
+      .filter((rb) => rb.role === mainRole || rb.share >= SHOW_ROLE_SHARE)
+      .forEach((rb) => {
+        const roleKey = String(rb.role || "MID").toUpperCase();
+        const objR = computeRoleObjComposite(roleKey);
+        const totalRawR = 0.55 * indivComposite + 0.45 * objR;
+        const scoreR = BASE + totalRawR * SCALE;
+
+        roleScores[roleKey] = {
+          role: roleKey,
+          score: scoreR,
+          share: rb.share,
+          count: rb.count || 0,
+        };
+      });
 
     return {
       ...p,
       mainRole,
       isFlex: flex,
+      roleBreakdown,
+      roleScores, // ✅ NEW
       roleMix: roleFractions
-        .map(
-          ([r, s]) => `${r} ${(s * 100).toFixed(
-            0
-          )}%`
-        )
+        .map(([r, s]) => `${roleShort(r)} ${(s * 100).toFixed(0)}%`)
         .join(" / "),
       _objComposite: objComposite,
       _indivComposite: indivComposite,
@@ -1647,57 +2012,108 @@ function renderObjectiveImpact(data) {
   });
 
   // ---------- Sample size + guest handling ----------
-  const maxGames =
-    Math.max(
-      ...playerStatsArr.map((p) => p.games || 1)
-    ) || 1;
+  const maxGames = Math.max(...playerStatsArr.map((p) => p.games || 1)) || 1;
   const teamMeanComposite =
-    playerStatsArr.reduce(
-      (sum, p) => sum + (p._totalCompositeRaw || 0.5),
-      0
-    ) / (playerStatsArr.length || 1) || 0.5;
+    playerStatsArr.reduce((sum, p) => sum + (p._totalCompositeRaw || 0.5), 0) /
+      (playerStatsArr.length || 1) || 0.5;
 
-  const minGamesFull = Math.max(
-    3,
-    Math.round(0.3 * maxGames)
-  );
+  const minGamesFull = Math.max(3, Math.round(0.3 * maxGames));
 
   playerStatsArr = playerStatsArr.map((p) => {
     const g = p.games || 0;
-    const sampleFactor = Math.max(
-      0,
-      Math.min(1, g / minGamesFull)
-    );
+    const sampleFactor = Math.max(0, Math.min(1, g / minGamesFull));
     const blendedComposite =
-      sampleFactor *
-        (p._totalCompositeRaw || 0.5) +
-      (1 - sampleFactor) * teamMeanComposite;
+      sampleFactor * (p._totalCompositeRaw || 0.5) + (1 - sampleFactor) * teamMeanComposite;
 
     const base = 40;
     const score = base + blendedComposite * (100 - base);
 
     const prev = previousTPI[p.name];
-    const delta =
-      typeof prev === "number"
-        ? score - prev
-        : 0;
-
+    const delta = typeof prev === "number" ? score - prev : 0;
     previousTPI[p.name] = score;
 
-    const isGuest =
-      g < minGamesFull;
+    const isGuest = g < minGamesFull;
 
-    return {
-      ...p,
-      impact: score,
-      delta,
-      isGuest,
+    return { ...p, impact: score, delta, isGuest };
+  });
+
+  // ✅ NEW: build role chips (UI only) — now includes role-fit score
+  playerStatsArr = playerStatsArr.map((p) => {
+    const roles = (p.roleBreakdown || []).slice().sort((a, b) => (b.share || 0) - (a.share || 0));
+    const visible = roles.filter((rb) => rb.role === p.mainRole || (rb.share || 0) >= SHOW_ROLE_SHARE);
+
+    const shown = visible.slice(0, MAX_ROLE_CHIPS);
+    const hidden = visible.slice(MAX_ROLE_CHIPS);
+
+    const scoreForRole = (role) => {
+      const key = String(role || "MID").toUpperCase();
+      const rs = p.roleScores && p.roleScores[key];
+      return rs && typeof rs.score === "number" ? rs.score : null;
     };
+
+    const roleLine = (rb) => {
+      const roleKey = String(rb.role || "MID").toUpperCase();
+      const sharePct = Math.round((rb.share || 0) * 100);
+      const g = rb.count || 0;
+      const s = scoreForRole(roleKey);
+      const scoreTxt = s === null ? "—" : `${Math.round(s)}`;
+
+      return `${roleShort(roleKey)} ${scoreTxt} (${g}g, ${sharePct}%)`;
+    };
+
+    const baseChip = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.65rem] border";
+    const mainCls = "bg-orange-50 text-orange-700 border-orange-200";
+    const altCls = "bg-white text-slate-600 border-slate-200";
+
+    const chips = shown
+      .map((rb) => {
+        const roleKey = String(rb.role || "MID").toUpperCase();
+        const isMain = roleKey === String(p.mainRole || "MID").toUpperCase();
+        const sharePct = Math.round((rb.share || 0) * 100);
+        const g = rb.count || 0;
+
+        const s = scoreForRole(roleKey);
+        const scoreTxt = s === null ? "—" : `${Math.round(s)}`;
+
+        return `
+          <span class="${baseChip} ${isMain ? mainCls : altCls}"
+                title="Role-fit score (projection, UI only): ${roleLine(rb)}">
+            <span class="font-semibold">${roleShort(roleKey)}</span>
+            <span class="font-semibold">${scoreTxt}</span>
+            <span class="opacity-50">·</span>
+            <span class="opacity-80">${sharePct}%</span>
+            <span class="opacity-50">·</span>
+            <span class="opacity-80">${g}g</span>
+          </span>
+        `;
+      })
+      .join("");
+
+    const moreChip = hidden.length
+      ? (() => {
+          const title = hidden.map(roleLine).join("\n");
+          return `
+            <span class="${baseChip} bg-slate-50 text-slate-600 border-slate-200"
+                  title="${title}">
+              +${hidden.length}
+            </span>
+          `;
+        })()
+      : "";
+
+    const flexTag = p.isFlex
+      ? `<span class="${baseChip} bg-slate-50 text-slate-600 border-slate-200">FLEX</span>`
+      : "";
+
+    const guestTag = p.isGuest
+      ? `<span class="${baseChip} bg-yellow-50 text-yellow-700 border-yellow-200" title="Low sample size — treated as guest.">⭐ guest</span>`
+      : "";
+
+    return { ...p, _roleChipsHTML: chips + moreChip, _flexTagHTML: flexTag, _guestTagHTML: guestTag };
   });
 
   playerStatsArr.sort((a, b) => {
-    if (a.isGuest !== b.isGuest)
-      return a.isGuest ? 1 : -1;
+    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
     return b.impact - a.impact;
   });
 
@@ -1729,7 +2145,7 @@ function renderObjectiveImpact(data) {
         .join("")}
     </div>`;
 
-  // ---------- UI: table (alignment fixed) ----------
+  // ---------- UI: table (updated player cell) ----------
   const tableHTML = `
     <div class="mt-4 overflow-x-auto">
       <table class="w-full border-collapse text-sm">
@@ -1749,31 +2165,20 @@ function renderObjectiveImpact(data) {
                 data-player-stat="${p.name}"
                 class="hover:bg-orange-50 transition cursor-pointer">
               <td class="px-4 py-2 align-middle">
-                <span class="font-medium text-gray-900">${p.name}</span>
-                <span class="text-xs text-gray-500 ml-1">
-                  (${p.mainRole}${p.isFlex ? ", flex" : ""}${p.isGuest ? ", guest" : ""})
-                </span>
-                ${
-                  p.isGuest
-                    ? `<span class="ml-1 text-yellow-500" title="Low sample size — treated as guest.">⭐</span>`
-                    : ""
-                }
+                <div class="font-medium text-gray-900">${p.name}</div>
+                <div class="mt-1 flex flex-wrap items-center gap-1.5">
+                  ${p._roleChipsHTML || ""}
+                  ${p._flexTagHTML || ""}
+                  ${p._guestTagHTML || ""}
+                </div>
               </td>
               <td class="px-4 py-2 text-right align-middle ${
-                p.impact >= 75
-                  ? "text-emerald-600"
-                  : p.impact >= 60
-                  ? "text-yellow-600"
-                  : "text-red-600"
+                p.impact >= 75 ? "text-emerald-600" : p.impact >= 60 ? "text-yellow-600" : "text-red-600"
               } font-semibold">
                 ${p.impact.toFixed(0)}
               </td>
               <td class="px-4 py-2 text-right align-middle text-xs ${
-                p.delta > 0.8
-                  ? "text-emerald-600"
-                  : p.delta < -0.8
-                  ? "text-red-600"
-                  : "text-gray-400"
+                p.delta > 0.8 ? "text-emerald-600" : p.delta < -0.8 ? "text-red-600" : "text-gray-400"
               }">
                 ${
                   typeof p.delta !== "number"
@@ -1793,6 +2198,9 @@ function renderObjectiveImpact(data) {
             .join("")}
         </tbody>
       </table>
+      <div class="mt-2 text-[0.65rem] text-slate-400 px-4">
+        Role chips show: <span class="font-semibold">role-fit score</span> (projection, UI only) · share · games.
+      </div>
     </div>`;
 
   // ---------- UI: quick player chips ----------
@@ -1831,17 +2239,14 @@ function renderObjectiveImpact(data) {
           <li><strong>Role context</strong>: expectations per role adjusted by real role mix.</li>
           <li><strong>Sample size</strong>: low-game players are shrunk toward team average and shown as ⭐ until enough games.</li>
         </ul>
-        <p class="mt-1 text-xs text-gray-500">
-          Use the table or name chips to open each player’s Strengths &amp; Focus view below.
+        <p class="mt-2 text-xs text-gray-500">
+          <strong>Role-fit scores</strong> shown in chips are a <em>projection</em> (UI only): "how this player's profile would rate if judged as that role."
         </p>
       </div>
     </div>`;
 
   // ---------- Detail panel builder ----------
-  const mean = (arr) =>
-    arr.length
-      ? arr.reduce((a, b) => a + b, 0) / arr.length
-      : 0;
+  const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
   const ctx = {
     meanKDA: mean(playerStatsArr.map((p) => p.indiv.avgKDA || 0)),
@@ -1871,63 +2276,41 @@ function renderObjectiveImpact(data) {
     const add = (cond, arr, text) => { if (cond) arr.push(text); };
 
     // Lane & economy
-    add(ratio(p.indiv.avgCSMin, ctx.meanCS) > 1.15, S,
-      "Strong CS/min & lane farming — reliably converting waves into gold.");
-    add(ratio(p.indiv.avgCSMin, ctx.meanCS) < 0.85, F,
-      "Work on CS/min & wave control to secure more stable resources.");
+    add(ratio(p.indiv.avgCSMin, ctx.meanCS) > 1.15, S, "Strong CS/min & lane farming — reliably converting waves into gold.");
+    add(ratio(p.indiv.avgCSMin, ctx.meanCS) < 0.85, F, "Work on CS/min & wave control to secure more stable resources.");
 
-    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) > 1.15, S,
-      "High gold per minute — good tempo on farming & objectives.");
-    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) < 0.85, F,
-      "Increase farming efficiency and join only high-value fights.");
+    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) > 1.15, S, "High gold per minute — good tempo on farming & objectives.");
+    add(ratio(p.indiv.avgGoldMin, ctx.meanGold) < 0.85, F, "Increase farming efficiency and join only high-value fights.");
 
     // Combat & carry
-    add(ratio(p.indiv.avgKDA, ctx.meanKDA) > 1.15, S,
-      "Efficient KDA — good fight selection & survival.");
-    add(ratio(p.indiv.avgKDA, ctx.meanKDA) < 0.85, F,
-      "Review death patterns; avoid low-value deaths & greedy plays.");
+    add(ratio(p.indiv.avgKDA, ctx.meanKDA) > 1.15, S, "Efficient KDA — good fight selection & survival.");
+    add(ratio(p.indiv.avgKDA, ctx.meanKDA) < 0.85, F, "Review death patterns; avoid low-value deaths & greedy plays.");
 
-    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) > 1.15, S,
-      "High damage share — strong carry presence in fights.");
-    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) < 0.75, F,
-      "Look for better DPS uptime and positioning to impact fights.");
+    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) > 1.15, S, "High damage share — strong carry presence in fights.");
+    add(ratio(p.indiv.avgDmgShare, ctx.meanDmgShare) < 0.75, F, "Look for better DPS uptime and positioning to impact fights.");
 
-    add(ratio(p.indiv.avgMech, ctx.meanMech) > 1.15, S,
-      "Mechanical Impact above team baseline — confident execution.");
-    add(ratio(p.indiv.avgMech, ctx.meanMech) < 0.85, F,
-      "Focus on clean combos and reliability in key fights.");
+    add(ratio(p.indiv.avgMech, ctx.meanMech) > 1.15, S, "Mechanical Impact above team baseline — confident execution.");
+    add(ratio(p.indiv.avgMech, ctx.meanMech) < 0.85, F, "Focus on clean combos and reliability in key fights.");
 
     // Decision making
-    add(ratio(p.indiv.avgTact, ctx.meanTact) > 1.15, S,
-      "Good Tactical Intelligence — strong decision making around plays.");
-    add(ratio(p.indiv.avgTact, ctx.meanTact) < 0.85, F,
-      "Tighten decision making — when to contest, reset, or cross-map.");
+    add(ratio(p.indiv.avgTact, ctx.meanTact) > 1.15, S, "Good Tactical Intelligence — strong decision making around plays.");
+    add(ratio(p.indiv.avgTact, ctx.meanTact) < 0.85, F, "Tighten decision making — when to contest, reset, or cross-map.");
 
     // Objectives & macro
-    add(ratio(p.control, ctx.meanControl) > 1.15, S,
-      "Drives objective control — presence correlates with secured objectives.");
-    add(ratio(p.conversion, ctx.meanConv) > 1.15, S,
-      "Converts advantages into objectives very well.");
-    add(ratio(p.participation, ctx.meanPart) < 0.85, F,
-      "Join more setups when team plays for Dragon/Herald/Baron/Towers.");
+    add(ratio(p.control, ctx.meanControl) > 1.15, S, "Drives objective control — presence correlates with secured objectives.");
+    add(ratio(p.conversion, ctx.meanConv) > 1.15, S, "Converts advantages into objectives very well.");
+    add(ratio(p.participation, ctx.meanPart) < 0.85, F, "Join more setups when team plays for Dragon/Herald/Baron/Towers.");
 
-    add(ratio(p.vision, ctx.meanVision) > 1.15, S,
-      "Impactful vision around objectives — enables safe, informed plays.");
-    add(ratio(p.vision, ctx.meanVision) < 0.85, F,
-      "Improve vision control/denial near key objectives.");
+    add(ratio(p.vision, ctx.meanVision) > 1.15, S, "Impactful vision around objectives — enables safe, informed plays.");
+    add(ratio(p.vision, ctx.meanVision) < 0.85, F, "Improve vision control/denial near key objectives.");
 
-    add(ratio(p.tempo, ctx.meanTempo) > 1.15, S,
-      "Good tempo & rotations — arrives early to important areas.");
-    add(ratio(p.consistency, ctx.meanCons) > 1.15, S,
-      "Consistent contribution game to game.");
-    add(ratio(p.consistency, ctx.meanCons) < 0.85, F,
-      "Reduce volatility — aim for a repeatable baseline performance.");
+    add(ratio(p.tempo, ctx.meanTempo) > 1.15, S, "Good tempo & rotations — arrives early to important areas.");
+    add(ratio(p.consistency, ctx.meanCons) > 1.15, S, "Consistent contribution game to game.");
+    add(ratio(p.consistency, ctx.meanCons) < 0.85, F, "Reduce volatility — aim for a repeatable baseline performance.");
 
     // Discipline
-    add(p.indiv.deathsPg > ctx.meanDeaths * 1.15, F,
-      "High deaths per game — focus on safer pathing, resets, and info usage.");
-    add(p.indiv.deathsPg < ctx.meanDeaths * 0.85, S,
-      "Good death discipline — rarely gives unnecessary advantages.");
+    add(p.indiv.deathsPg > ctx.meanDeaths * 1.15, F, "High deaths per game — focus on safer pathing, resets, and info usage.");
+    add(p.indiv.deathsPg < ctx.meanDeaths * 0.85, S, "Good death discipline — rarely gives unnecessary advantages.");
 
     const uniq = (arr) => [...new Set(arr)];
     const strengths = uniq(S).slice(0, 5);
@@ -1940,6 +2323,34 @@ function renderObjectiveImpact(data) {
         ? "bg-yellow-50 text-yellow-700 border-yellow-200"
         : "bg-red-50 text-red-700 border-red-200";
 
+    const roleFitRows = (() => {
+      const entries = Object.values(p.roleScores || {}).sort((a, b) => (b.share || 0) - (a.share || 0));
+      if (!entries.length) return `<div class="text-gray-500 text-sm">No role-fit scores available.</div>`;
+      return `
+        <div class="mt-2">
+          <div class="text-xs uppercase tracking-wide opacity-70 mb-1">Role-fit scores (projection)</div>
+          <div class="flex flex-wrap gap-1.5">
+            ${entries
+              .map((r) => {
+                const sharePct = Math.round((r.share || 0) * 100);
+                return `
+                  <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.7rem] border bg-white text-slate-700 border-slate-200"
+                        title="${roleShort(r.role)} — ${r.count} games (${sharePct}%)">
+                    <span class="font-semibold">${roleShort(r.role)}</span>
+                    <span class="font-semibold">${Math.round(r.score)}</span>
+                    <span class="opacity-50">·</span>
+                    <span class="opacity-70">${sharePct}%</span>
+                    <span class="opacity-50">·</span>
+                    <span class="opacity-70">${r.count}g</span>
+                  </span>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+    })();
+
     return `
       <div class="p-4 rounded-2xl border ${badge} shadow-sm">
         <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
@@ -1948,16 +2359,19 @@ function renderObjectiveImpact(data) {
             <div class="text-2xl font-semibold">
               ${p.impact.toFixed(0)}
               <span class="text-xs text-gray-500 font-normal ml-1">
-                indiv: ${(p._indivComposite * 100).toFixed(0)}
-                • obj: ${(p._objComposite * 100).toFixed(0)}
+                indiv: ${(p._indivComposite * 100).toFixed(0)} • obj: ${(p._objComposite * 100).toFixed(0)}
               </span>
             </div>
           </div>
           <div class="text-xs text-gray-600">
-            ${p.name} · ${p.mainRole}${p.isFlex ? " (flex)" : ""}${p.isGuest ? " · ⭐ low sample" : ""}
-            <div class="text-[0.65rem] text-gray-400">
-              Games: ${p.games} • Roles: ${p.roleMix}
+            ${p.name}${p.isGuest ? " · ⭐ low sample" : ""}${p.isFlex ? " · flex" : ""}
+            <div class="text-[0.65rem] text-gray-400 mt-1">Games: ${p.games}</div>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              ${p._roleChipsHTML || ""}
+              ${p._flexTagHTML || ""}
+              ${p._guestTagHTML || ""}
             </div>
+            ${roleFitRows}
           </div>
         </div>
 
@@ -2009,14 +2423,12 @@ function renderObjectiveImpact(data) {
 
   // ---------- Interactions ----------
   // Trend buttons
-  document
-    .querySelectorAll("#objective-impact [data-window]")
-    .forEach((btn) => {
-      btn.addEventListener("click", () => {
-        objectiveTrendWindow = btn.getAttribute("data-window");
-        renderObjectiveImpact(data);
-      });
+  document.querySelectorAll("#objective-impact [data-window]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      objectiveTrendWindow = btn.getAttribute("data-window");
+      renderObjectiveImpact(data);
     });
+  });
 
   // Info toggle
   const infoBtn = document.getElementById("toggleObjectiveInfo");
@@ -2044,24 +2456,20 @@ function renderObjectiveImpact(data) {
   };
 
   // Table rows
-  document
-    .querySelectorAll('#objective-impact table tbody tr[data-player]')
-    .forEach((row) => {
-      row.addEventListener("click", () => {
-        const name = row.getAttribute("data-player");
-        showPlayer(name);
-      });
+  document.querySelectorAll('#objective-impact table tbody tr[data-player]').forEach((row) => {
+    row.addEventListener("click", () => {
+      const name = row.getAttribute("data-player");
+      showPlayer(name);
     });
+  });
 
   // Player chips
-  document
-    .querySelectorAll("#objective-impact .player-select-btn")
-    .forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const name = btn.getAttribute("data-player");
-        showPlayer(name);
-      });
+  document.querySelectorAll("#objective-impact .player-select-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.getAttribute("data-player");
+      showPlayer(name);
     });
+  });
 
   console.log("⭐ Total Player Impact", {
     window: objectiveTrendWindow,
@@ -2072,6 +2480,15 @@ function renderObjectiveImpact(data) {
       impact: p.impact.toFixed(1),
       games: p.games,
       guest: p.isGuest,
+      flex: p.isFlex,
+      roles: (p.roleBreakdown || []).map((r) => ({
+        role: r.role,
+        share: +(r.share * 100).toFixed(0),
+        games: r.count,
+        roleFit: p.roleScores && p.roleScores[String(r.role || "MID").toUpperCase()]
+          ? +p.roleScores[String(r.role || "MID").toUpperCase()].score.toFixed(0)
+          : null,
+      })),
     })),
     overallWinrate: overallWinrate.toFixed(1),
     blueWinrate: blueWinrate.toFixed(1),
@@ -2081,18 +2498,24 @@ function renderObjectiveImpact(data) {
 }
 
 
-
 // ============================================================================
-// 🧩 TEAM SYNERGY & IDENTITY — v3.4
+// 🧩 TEAM SYNERGY & IDENTITY — v3.7
 // - Signature picks per role (Top 1–3 each, with smart fallback)
+// - Timeline-aware scoring: uses early lane timeline data (Gold/XP/CS diff, lane state)
 // - Expanded Team Playstyle DNA
-// - Objective Impact Priorities (Dragon / Herald / Baron / Tower / Atakhan / Void Grubs)
+// - Highlight cards: Most Reliable Duo, Best Bot Lane Combo, Top Signature Pick
+// - Core Identity Team Comp mini-card (under top 3 cards)
+// - NEW: Top Team Comps (champ-based) using both match + timeline data
 // - Tabs aligned with main dashboard (Last 5 / 10 / Current Split / Season)
 // ============================================================================
 
 let synergyTrendWindow = "season";
 
-function renderTeamSynergy(data) {
+/**
+ * @param {Array<Object>} data          - per game / player rows (main dataset)
+ * @param {Array<Object>} [timelineData]- optional minute-by-minute timeline rows
+ */
+function renderTeamSynergy(data, timelineData) {
   const container = document.getElementById("team-synergy");
   if (!container || !data || !data.length) return;
 
@@ -2116,7 +2539,7 @@ function renderTeamSynergy(data) {
     if (["JUNGLE", "JG"].includes(r)) return "JUNGLE";
     if (["MIDDLE", "MID"].includes(r)) return "MID";
     if (["BOTTOM", "BOT", "ADC"].includes(r)) return "BOTTOM";
-    if (["SUPPORT", "SUP"].includes(r)) return "SUPPORT";
+    if (["SUPPORT", "SUP", "UTILITY"].includes(r)) return "SUPPORT";
     return r;
   };
 
@@ -2129,7 +2552,15 @@ function renderTeamSynergy(data) {
   };
 
   const isWin = (res) => String(res || "").toLowerCase() === "win";
-  const boolTrue = (v) => String(v).toUpperCase() === "TRUE";
+
+  // Optional: timeline data (minute-by-minute)
+  const timeline =
+    Array.isArray(timelineData)
+      ? timelineData
+      : (typeof window !== "undefined" &&
+         Array.isArray(window.lesNubsTimeline)
+          ? window.lesNubsTimeline
+          : []);
 
   // --- Detect current season & split (from dataset) ---
   const seasons = [
@@ -2137,9 +2568,7 @@ function renderTeamSynergy(data) {
       data.map((r) => normSeason(r["Season"])).filter(Boolean)
     ),
   ];
-  const currentSeason = seasons.length
-    ? seasons[seasons.length - 1]
-    : null;
+  const currentSeason = seasons.length ? seasons[seasons.length - 1] : null;
 
   const splitCandidates = data
     .filter((r) =>
@@ -2167,15 +2596,11 @@ function renderTeamSynergy(data) {
         return getRecentGames(10);
       case "split":
         if (currentSplit == null) return data;
-        return data.filter(
-          (r) => normSplitNum(r["Split"]) === currentSplit
-        );
+        return data.filter((r) => normSplitNum(r["Split"]) === currentSplit);
       case "season":
       default: {
         if (!currentSeason) return data;
-        return data.filter(
-          (r) => normSeason(r["Season"]) === currentSeason
-        );
+        return data.filter((r) => normSeason(r["Season"]) === currentSeason);
       }
     }
   })();
@@ -2217,7 +2642,6 @@ function renderTeamSynergy(data) {
   // ==========================================================================
   // 0) Player baselines (for signature pick comparison)
   // ==========================================================================
-
   const playerOverall = {};
   filteredData.forEach((r) => {
     const name = (r["Player"] || "").trim();
@@ -2250,13 +2674,7 @@ function renderTeamSynergy(data) {
   const getPlayerBaseline = (name) => {
     const p = playerOverall[name];
     if (!p || !p.games)
-      return {
-        wr: teamWR,
-        kda: 2,
-        pr: 50,
-        mech: 50,
-        tact: 50,
-      };
+      return { wr: teamWR, kda: 2, pr: 50, mech: 50, tact: 50 };
     return {
       wr: (p.wins / p.games) * 100,
       kda: p.kdaSum / p.games || 2,
@@ -2269,7 +2687,6 @@ function renderTeamSynergy(data) {
   // ==========================================================================
   // 1) Player duo synergy
   // ==========================================================================
-
   const duoStats = {};
 
   gameList.forEach((g) => {
@@ -2352,7 +2769,6 @@ function renderTeamSynergy(data) {
   // ==========================================================================
   // 2) Bot lane champ synergy
   // ==========================================================================
-
   const botCombos = {};
 
   gameList.forEach((g) => {
@@ -2377,9 +2793,109 @@ function renderTeamSynergy(data) {
     .slice(0, 4);
 
   // ==========================================================================
-  // 3) Signature picks per role
+  // 3) Timeline-based early lane performance (optional)
+  //    - aggregated per (role, champ, pilot)
+  //    - early lane per game+role for team-combo scoring
   // ==========================================================================
+  const timelinePickStats = {};
+  const earlyByGameRole = {}; // key: gameId|role
 
+  if (Array.isArray(timeline) && timeline.length) {
+    timeline.forEach((r) => {
+      const matchId = getGameId(r);
+      if (!matchId || !games[matchId]) return; // respect filtered window
+
+      const name = (r["Player"] || "").trim();
+      const champ = (r["Champion"] || "").trim();
+      const role = canonRole(r["Role"] || r["ROLE"]);
+      if (!name || !champ || !role) return;
+
+      const minuteRaw = r["Minute"] ?? r["Time"] ?? r["Timestamp"];
+      const minute = Number(minuteRaw);
+      // focus on early game lane phase
+      if (!Number.isFinite(minute) || minute > 14) return;
+
+      // per-pick (role, champ, pilot)
+      const key = `${role}|${champ}|${name}`;
+      if (!timelinePickStats[key]) {
+        timelinePickStats[key] = {
+          minutes: 0,
+          goldDiffSum: 0,
+          xpDiffSum: 0,
+          csDiffSum: 0,
+          laneGoldWins: 0,
+          laneXpWins: 0,
+          laneCsWins: 0,
+        };
+      }
+      const t = timelinePickStats[key];
+      t.minutes += 1;
+      const gDiff = toNum(r["Gold Diff vs Opp"]);
+      const xDiff = toNum(r["XP Diff vs Opp"]);
+      const cDiff = toNum(r["CS Diff vs Opp"]);
+      t.goldDiffSum += gDiff;
+      t.xpDiffSum += xDiff;
+      t.csDiffSum += cDiff;
+
+      const lg = toNum(r["Lane Gold State"]);
+      const lx = toNum(r["Lane XP State"]);
+      const lc = toNum(r["Lane CS State"]);
+      if (lg > 0) t.laneGoldWins += 1;
+      if (lx > 0) t.laneXpWins += 1;
+      if (lc > 0) t.laneCsWins += 1;
+
+      // per-game, per-role early lane (for team-comp scoring)
+      const gKey = `${matchId}|${role}`;
+      if (!earlyByGameRole[gKey]) {
+        earlyByGameRole[gKey] = {
+          minutes: 0,
+          goldDiffSum: 0,
+          xpDiffSum: 0,
+          csDiffSum: 0,
+          laneAdvMinutes: 0,
+        };
+      }
+      const eg = earlyByGameRole[gKey];
+      eg.minutes += 1;
+      eg.goldDiffSum += gDiff;
+      eg.xpDiffSum += xDiff;
+      eg.csDiffSum += cDiff;
+
+      const laneAdv = (lg > 0 ? 1 : 0) + (lx > 0 ? 1 : 0) + (lc > 0 ? 1 : 0);
+      if (laneAdv > 0) eg.laneAdvMinutes += 1;
+    });
+  }
+
+  const getTimelineBoost = (role, champ, pilot) => {
+    const key = `${role}|${champ}|${pilot}`;
+    const t = timelinePickStats[key];
+    if (!t || t.minutes < 10) {
+      return { boost: 0, summary: null };
+    }
+    const goldAvg = t.goldDiffSum / t.minutes; // avg lane gold diff early
+    const laneWinRate =
+      (t.laneGoldWins + t.laneXpWins + t.laneCsWins) /
+      (3 * t.minutes || 1);
+
+    // Normalize & clamp: we only reward positive early lane performance
+    const gNorm = Math.max(-300, Math.min(300, goldAvg)) / 300; // -1..1
+    const lwNorm = Math.max(0, Math.min(1, laneWinRate)); // 0..1
+    const rawBoost = 0.6 * gNorm + 0.8 * lwNorm;
+    const boost = Math.max(0, rawBoost); // only positive contribution
+
+    return {
+      boost,
+      summary: {
+        minutes: t.minutes,
+        goldAvg,
+        laneWinRate,
+      },
+    };
+  };
+
+  // ==========================================================================
+  // 4) Signature picks per role (timeline-informed)
+  // ==========================================================================
   const roleChampStats = {}; // role -> champ -> aggregated
 
   filteredData.forEach((r) => {
@@ -2450,7 +2966,15 @@ function renderTeamSynergy(data) {
     if (s.mechLift > 3) bits.push(`mechanical edge`);
     if (s.tactLift > 3) bits.push(`smarter setups`);
     if (s.tc > 0) bits.push(`high team contribution`);
-    return bits.length ? bits.join(", ") : `reliable comfort pick for ${s.pilot}.`;
+    if (s.laneSummary && s.laneSummary.minutes >= 12) {
+      const { goldAvg, laneWinRate } = s.laneSummary;
+      if (goldAvg > 150) bits.push(`early lane +${goldAvg.toFixed(0)}g`);
+      if (laneWinRate > 0.55)
+        bits.push(`${(laneWinRate * 100).toFixed(0)}% advantaged lane minutes`);
+    }
+    return bits.length
+      ? bits.join(", ")
+      : `reliable comfort pick for ${s.pilot}.`;
   };
 
   const rawSignatures = [];
@@ -2458,7 +2982,8 @@ function renderTeamSynergy(data) {
   Object.entries(roleChampStats).forEach(([role, champs]) => {
     Object.entries(champs).forEach(([champ, s]) => {
       const [pilot, ps] =
-        Object.entries(s.byPlayer).sort((a, b) => b[1].games - a[1].games)[0] || [];
+        Object.entries(s.byPlayer).sort((a, b) => b[1].games - a[1].games)[0] ||
+        [];
       if (!pilot || ps.games < 3) return;
 
       const champWr = (ps.wins / ps.games) * 100;
@@ -2475,13 +3000,17 @@ function renderTeamSynergy(data) {
       const mechLift = champMech - base.mech;
       const tactLift = champTact - base.tact;
 
+      const { boost: laneBoost, summary: laneSummary } =
+        getTimelineBoost(role, champ, pilot);
+
       const identityScore =
         (champWr / 100) * (1 + Math.log10(ps.games + 1)) +
         Math.max(0, wrLift / 20) +
         Math.max(0, kdaLift / 3) +
         Math.max(0, prLift / 30) +
         Math.max(0, (mechLift + tactLift) / 60) +
-        Math.max(0, champTc / 100);
+        Math.max(0, champTc / 100) +
+        laneBoost; // add timeline-based boost
 
       rawSignatures.push({
         role,
@@ -2500,6 +3029,7 @@ function renderTeamSynergy(data) {
         mechLift,
         tactLift,
         identityScore,
+        laneSummary,
       });
     });
   });
@@ -2513,7 +3043,6 @@ function renderTeamSynergy(data) {
       .sort((a, b) => b.identityScore - a.identityScore);
 
     if (!picks.length && roleChampStats[role]) {
-      // fallback: best champ for role (min 3 games)
       const fallback = Object.entries(roleChampStats[role])
         .map(([champ, s]) => {
           const [pilot, ps] =
@@ -2550,9 +3079,116 @@ function renderTeamSynergy(data) {
   const allSigPicks = Object.values(roleSignatures).flat();
 
   // ==========================================================================
-  // 4) Team Playstyle DNA (expanded)
+  // 5) NEW — Full Team Comp scoring (champ-based, uses timeline + team gold)
   // ==========================================================================
+  const teamCompStats = {};
 
+  gameList.forEach((g) => {
+    // Find champ per role in this game
+    const byRole = {};
+    g.rows.forEach((r) => {
+      const role = canonRole(r["ROLE"]);
+      const champ = (r["Champion"] || "").trim();
+      if (!role || !champ) return;
+      if (!byRole[role]) byRole[role] = champ;
+    });
+
+    const rolesPresent = ROLE_ORDER.filter((r) => byRole[r]);
+    // Require at least 4 roles to treat as a "real" comp
+    if (rolesPresent.length < 4) return;
+
+    const compKey = ROLE_ORDER.map((role) => byRole[role] || "—").join("|");
+
+    if (!teamCompStats[compKey]) {
+      teamCompStats[compKey] = {
+        key: compKey,
+        games: 0,
+        wins: 0,
+        roles: { ...byRole },
+        earlyGoldSum: 0,
+        earlyGoldSamples: 0,
+        laneAdvSum: 0,
+        laneAdvSamples: 0,
+        gold10Sum: 0,
+        gold15Sum: 0,
+        goldSamples: 0,
+      };
+    }
+
+    const s = teamCompStats[compKey];
+    s.games += 1;
+    if (g.result === "Win") s.wins += 1;
+
+    // Team-level early gold diffs, if available
+    const baseRow = g.rows[0] || {};
+    const gold10Col = "Gold Diff @10 (Team)";
+    const gold15Col = "Gold Diff @15 (Team)";
+    let hasGoldMetric = false;
+
+    if (hasCol(gold10Col)) {
+      s.gold10Sum += toNum(baseRow[gold10Col]);
+      hasGoldMetric = true;
+    }
+    if (hasCol(gold15Col)) {
+      s.gold15Sum += toNum(baseRow[gold15Col]);
+      hasGoldMetric = true;
+    }
+    if (hasGoldMetric) {
+      s.goldSamples += 1;
+    }
+
+    // Lane early-game from timeline per role
+    rolesPresent.forEach((role) => {
+      const eg = earlyByGameRole[`${g.id}|${role}`];
+      if (!eg || !eg.minutes) return;
+      const avgGold = eg.goldDiffSum / eg.minutes;
+      const advRate = eg.laneAdvMinutes / eg.minutes;
+
+      s.earlyGoldSum += avgGold;
+      s.earlyGoldSamples += 1;
+      s.laneAdvSum += advRate;
+      s.laneAdvSamples += 1;
+    });
+  });
+
+  const teamCompArr = Object.values(teamCompStats)
+    .filter((c) => c.games >= 2) // need at least 2 uses
+    .map((s) => {
+      const wr = (s.wins / s.games) * 100;
+      const lift = wr - teamWR;
+      const avgGold10 = s.goldSamples ? s.gold10Sum / s.goldSamples : 0;
+      const avgGold15 = s.goldSamples ? s.gold15Sum / s.goldSamples : 0;
+      const avgEarlyLane = s.earlyGoldSamples ? s.earlyGoldSum / s.earlyGoldSamples : 0;
+      const avgLaneAdv = s.laneAdvSamples ? s.laneAdvSum / s.laneAdvSamples : 0;
+
+      const wrScore = wr / 100; // 0–1
+      const liftScore = Math.max(0, lift / 20); // up to ~+0.5 for big lift
+      const laneScore = Math.max(0, avgEarlyLane / 200); // +1 around +200g avg lane
+      const tempoScore = Math.max(0, avgGold10 / 600); // +1 around +600g @10
+
+      const score =
+        0.45 * wrScore +
+        0.25 * liftScore +
+        0.2 * laneScore +
+        0.1 * tempoScore;
+
+      return {
+        ...s,
+        wr,
+        lift,
+        avgGold10,
+        avgGold15,
+        avgEarlyLane,
+        avgLaneAdv,
+        score,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+
+  // ==========================================================================
+  // 6) Team Playstyle DNA (expanded)
+  // ==========================================================================
   const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
   const winGames = gameList.filter((g) => g.result === "Win");
@@ -2593,38 +3229,7 @@ function renderTeamSynergy(data) {
     ? gameMetric("Gold-XP Sync Index")
     : { win: 0, loss: 0 };
 
-  const firstFlag = (col) => ({
-    win:
-      winGames.length > 0
-        ? (winGames.filter(
-            (g) => boolTrue((g.rows[0] || {})[col])
-          ).length /
-            winGames.length) *
-          100
-        : 0,
-    loss:
-      lossGames.length > 0
-        ? (lossGames.filter(
-            (g) => boolTrue((g.rows[0] || {})[col])
-          ).length /
-            lossGames.length) *
-          100
-        : 0,
-  });
-
-  const firstDrake = hasCol("First Dragon (Team)")
-    ? firstFlag("First Dragon (Team)")
-    : { win: 0, loss: 0 };
-  const firstHerald = hasCol("First Herald (Team)")
-    ? firstFlag("First Herald (Team)")
-    : { win: 0, loss: 0 };
-  const firstBaron = hasCol("First Baron (Team)")
-    ? firstFlag("First Baron (Team)")
-    : { win: 0, loss: 0 };
-
   const dna = [];
-
-  // Early game / tempo
   if (gold10.win - gold10.loss > 600 || gold15.win - gold15.loss > 1000)
     dna.push(
       "Early tempo: when you secure early gold leads, winrate spikes — drafts with early prio & skirmish tools fit your identity."
@@ -2633,8 +3238,6 @@ function renderTeamSynergy(data) {
     dna.push(
       "Tempo efficiency: moving first on plays is a big separator; slow first rotations hurt your style."
     );
-
-  // Objectives & macro
   if (macroStr.win - macroStr.loss > 5)
     dna.push(
       "Macro strength: disciplined objective trading is a core win condition; avoid coin-flip fights when trades are available."
@@ -2643,20 +3246,6 @@ function renderTeamSynergy(data) {
     dna.push(
       "Low-chaos preference: structured games with clear lanes & setups favor you heavily."
     );
-  if (firstDrake.win - firstDrake.loss > 25)
-    dna.push(
-      "Dragon control: taking first drake dramatically improves outcomes; path & lanes should respect this."
-    );
-  if (firstHerald.win - firstHerald.loss > 25)
-    dna.push(
-      "Herald leverage: when you snowball plates with Herald, your midgame becomes much easier."
-    );
-  if (firstBaron.win - firstBaron.loss > 25)
-    dna.push(
-      "Baron setups: clean vision + discipline on first Baron is a major closer — this is a defining strength when executed."
-    );
-
-  // Vision & information game
   if (visionImpact.win > visionImpact.loss + 5)
     dna.push(
       "Vision identity: higher Vision Impact in wins — lean on support/jungle that can maintain deep, safe vision."
@@ -2665,8 +3254,6 @@ function renderTeamSynergy(data) {
     dna.push("You convert vision into objectives efficiently — keep running set plays off vision.");
   if (visKillRatio.win > visKillRatio.loss + 0.2)
     dna.push("Vision → picks: you reliably turn info into kills when playing your game.");
-
-  // Scaling / clutch / sync
   if (scalingIdx.win > scalingIdx.loss + 0.2)
     dna.push(
       "Scaling comfort: your long-game execution is above average; scaling comps are viable when lanes are stable."
@@ -2679,7 +3266,6 @@ function renderTeamSynergy(data) {
     dna.push(
       "Resource sync: gold and XP advantages rise together in wins — coordinated map play over solo heroics."
     );
-
   if (!dna.length) {
     dna.push(
       "No single coinflip stat: wins come from stacking small edges — comfort picks, stable duos, clean vision and objective play."
@@ -2687,168 +3273,24 @@ function renderTeamSynergy(data) {
   }
 
   // ==========================================================================
-  // 5) Objective Impact Priorities (Dragon / Herald / Baron / Tower / Atakhan / Void)
+  // 7) Highlight Cards (duo, bot combo, top & next signature)
   // ==========================================================================
-
-  const objectiveDefs = [
-    {
-      key: "dragon",
-      label: "🐉 Dragon",
-      first: "First Dragon (Team)",
-      count: ["Dragon Kills"],
-    },
-    {
-      key: "herald",
-      label: "🪄 Herald",
-      first: "First Herald (Team)",
-      count: ["Herald Kills"],
-    },
-    {
-      key: "baron",
-      label: "👑 Baron",
-      first: "First Baron (Team)",
-      count: ["Baron Kills"],
-    },
-    {
-      key: "tower",
-      label: "🏰 Tower",
-      first: "First Tower (Team)",
-      count: ["Tower Kills"],
-    },
-    {
-      key: "atakhan",
-      label: "🔥 Atakhan",
-      first: "First Atakhan (Team)",
-      count: ["Atakhan Participation", "Atakhan Kills"],
-    },
-    {
-      key: "void",
-      label: "🪲 Void Grubs",
-      first: "First Void Grub (Team)",
-      count: ["Void Grub Participation", "Void Grub Kills"],
-    },
-  ];
-
-  const objectiveImpacts = objectiveDefs
-    .map((def) => {
-      let gamesWith = 0,
-        winsWith = 0,
-        gamesWithout = 0,
-        winsWithout = 0;
-
-      gameList.forEach((g) => {
-        const row = g.rows[0] || {};
-        let has = false;
-
-        if (def.first && hasCol(def.first) && boolTrue(row[def.first])) {
-          has = true;
-        }
-
-        if (!has && def.count && def.count.length) {
-          has = def.count.some(
-            (col) => hasCol(col) && toNum(row[col]) > 0
-          );
-        }
-
-        // if we can't detect presence, skip this game
-        if (!def.first && (!def.count || !def.count.some((c) => hasCol(c)))) {
-          return;
-        }
-
-        if (has) {
-          gamesWith++;
-          if (g.result === "Win") winsWith++;
-        } else {
-          gamesWithout++;
-          if (g.result === "Win") winsWithout++;
-        }
-      });
-
-      const total = gamesWith + gamesWithout;
-      if (!total || gamesWith < 2) return null;
-
-      const wrWith = gamesWith ? (winsWith / gamesWith) * 100 : 0;
-      const wrWithout = gamesWithout ? (winsWithout / gamesWithout) * 100 : 0;
-      const impact = wrWith - wrWithout;
-      const control = (gamesWith / total) * 100;
-
-      return {
-        ...def,
-        wrWith,
-        wrWithout,
-        impact,
-        control,
-        total,
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => (b.impact || 0) - (a.impact || 0));
-
-  const objectiveHTML =
-    objectiveImpacts.length > 0
-      ? `
-      <div class="mt-3">
-        <h3 class="text-xs font-semibold text-gray-800 mb-1">
-          Objective Impact Priorities
-        </h3>
-        <div class="grid gap-1">
-          ${objectiveImpacts
-            .map((o, idx) => {
-              const tone =
-                o.impact > 8
-                  ? "text-emerald-600"
-                  : o.impact > 4
-                  ? "text-sky-600"
-                  : o.impact > 0
-                  ? "text-gray-700"
-                  : "text-gray-500";
-              const badge =
-                idx === 0
-                  ? "text-[0.55rem] text-emerald-600 font-semibold"
-                  : "text-[0.55rem] text-gray-400";
-              return `
-              <div class="px-2 py-1.5 rounded-xl bg-white border border-gray-100 flex items-center justify-between text-[0.7rem] shadow-[0_1px_4px_rgba(15,23,42,0.04)]">
-                <div>
-                  <div class="${badge}">
-                    ${idx === 0 ? "Most impactful" : "Key factor"}
-                  </div>
-                  <div class="font-medium text-gray-900">
-                    ${o.label}
-                  </div>
-                  <div class="text-[0.6rem] text-gray-500">
-                    Control ${o.control.toFixed(1)}% · WR with ${
-                      isNaN(o.wrWith) ? "-" : o.wrWith.toFixed(1) + "%"
-                    }
-                  </div>
-                </div>
-                <div class="text-right">
-                  <div class="${tone} text-[0.7rem] font-semibold">
-                    ${o.impact >= 0 ? "+" : ""}${o.impact.toFixed(1)}pp
-                  </div>
-                  <div class="text-[0.55rem] text-gray-500">
-                    vs games without
-                  </div>
-                </div>
-              </div>`;
-            })
-            .join("")}
-        </div>
-      </div>`
-      : "";
-
-  // ==========================================================================
-  // 6) Highlight Cards (duo, bot combo, top & next signature)
-  // ==========================================================================
-
   const describeSigCard = (s) => {
     const bits = [];
     const base = getPlayerBaseline(s.pilot);
     const liftWR = s.wr - base.wr;
     const liftPR = (s.pr || 0) - (base.pr || 0);
     const liftMech = (s.mech || 0) - (base.mech || 0);
+
     if (liftWR > 3) bits.push(`+${liftWR.toFixed(1)}pp WR vs ${s.pilot}'s avg`);
     if (liftPR > 3) bits.push(`impact spike`);
     if (liftMech > 3) bits.push(`mechanical spike`);
+    if (s.laneSummary && s.laneSummary.minutes >= 12) {
+      const { goldAvg, laneWinRate } = s.laneSummary;
+      if (goldAvg > 150) bits.push(`early lane +${goldAvg.toFixed(0)}g`);
+      if (laneWinRate > 0.55)
+        bits.push(`${(laneWinRate * 100).toFixed(0)}% advantaged lane minutes`);
+    }
     if (!bits.length) bits.push("reliable comfort pick profile");
     return bits.join(", ");
   };
@@ -2858,26 +3300,17 @@ function renderTeamSynergy(data) {
     ? `
       <div class="p-3 rounded-2xl bg-sky-50 border border-sky-100 h-full flex flex-col justify-between">
         <div>
-          <div class="text-[0.65rem] font-semibold text-sky-500 uppercase mb-1">
-            Most Reliable Duo
-          </div>
-          <div class="text-sm font-semibold text-gray-900">
-            ${bestDuo.p1} + ${bestDuo.p2}
-          </div>
+          <div class="text-[0.65rem] font-semibold text-sky-500 uppercase mb-1">Most Reliable Duo</div>
+          <div class="text-sm font-semibold text-gray-900">${bestDuo.p1} + ${bestDuo.p2}</div>
           <div class="text-[0.7rem] text-gray-700">
-            ${bestDuo.winrate.toFixed(1)}% WR (${bestDuo.games} g),
-            +${(bestDuo.winrate - teamWR).toFixed(1)}pp vs team
+            ${bestDuo.winrate.toFixed(1)}% WR (${bestDuo.games} g), +${(bestDuo.winrate - teamWR).toFixed(1)}pp vs team
           </div>
-          <div class="text-[0.6rem] text-gray-500 mt-0.5">
-            High shared wins across many games — stable synergy core for drafts.
-          </div>
+          <div class="text-[0.6rem] text-gray-500 mt-0.5">High shared wins across many games — stable synergy core for drafts.</div>
         </div>
       </div>`
     : `
       <div class="p-3 rounded-2xl bg-sky-50 border border-sky-100 h-full flex items-center">
-        <div class="text-[0.7rem] text-gray-500">
-          Not enough repeated lineups yet to lock in a most reliable duo.
-        </div>
+        <div class="text-[0.7rem] text-gray-500">Not enough repeated lineups yet to lock in a most reliable duo.</div>
       </div>`;
 
   const bestBot = botArr[0];
@@ -2885,26 +3318,17 @@ function renderTeamSynergy(data) {
     ? `
       <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 h-full flex flex-col justify-between">
         <div>
-          <div class="text-[0.65rem] font-semibold text-emerald-500 uppercase mb-1">
-            Best Bot Lane Combo
-          </div>
-          <div class="text-sm font-semibold text-gray-900">
-            ${bestBot.adc} + ${bestBot.sup}
-          </div>
+          <div class="text-[0.65rem] font-semibold text-emerald-500 uppercase mb-1">Best Bot Lane Combo</div>
+          <div class="text-sm font-semibold text-gray-900">${bestBot.adc} + ${bestBot.sup}</div>
           <div class="text-[0.7rem] text-gray-700">
-            ${bestBot.winrate.toFixed(1)}% WR (${bestBot.games} g),
-            +${(bestBot.winrate - teamWR).toFixed(1)}pp vs team
+            ${bestBot.winrate.toFixed(1)}% WR (${bestBot.games} g), +${(bestBot.winrate - teamWR).toFixed(1)}pp vs team
           </div>
-          <div class="text-[0.6rem] text-gray-500 mt-0.5">
-            When drafted, this lane reliably outperforms baseline — clear identity lever.
-          </div>
+          <div class="text-[0.6rem] text-gray-500 mt-0.5">When drafted, this lane reliably outperforms baseline — clear identity lever.</div>
         </div>
       </div>`
     : `
       <div class="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 h-full flex items-center">
-        <div class="text-[0.7rem] text-gray-500">
-          No recurring ADC+SUP combo with enough games to highlight yet.
-        </div>
+        <div class="text-[0.7rem] text-gray-500">No recurring ADC+SUP combo with enough games to highlight yet.</div>
       </div>`;
 
   const minSigGames = Math.max(6, Math.round(totalGames * 0.18));
@@ -2945,18 +3369,13 @@ function renderTeamSynergy(data) {
   const sigCardHTML = `
     <div class="p-3 rounded-2xl bg-orange-50 border border-orange-100 h-full flex flex-col justify-between">
       <div>
-        <div class="text-[0.65rem] font-semibold text-orange-500 uppercase mb-1">
-          ${sigHeader}
-        </div>
+        <div class="text-[0.65rem] font-semibold text-orange-500 uppercase mb-1">${sigHeader}</div>
         ${
           bestSig
             ? `
-          <div class="text-sm font-semibold text-gray-900">
-            ${bestSig.champ} ${bestSig.role}
-          </div>
+          <div class="text-sm font-semibold text-gray-900">${bestSig.champ} ${bestSig.role}</div>
           <div class="text-[0.7rem] text-gray-700">
-            ${bestSig.pilot} · ${bestSig.wr.toFixed(1)}% WR,
-            KDA ${bestSig.kda.toFixed(2)} (${bestSig.games} g)
+            ${bestSig.pilot} · ${bestSig.wr.toFixed(1)}% WR, KDA ${bestSig.kda.toFixed(2)} (${bestSig.games} g)
           </div>
           <div class="text-[0.6rem] text-gray-500 mt-0.5">
             ${
@@ -2966,24 +3385,17 @@ function renderTeamSynergy(data) {
             }
           </div>`
             : `
-          <div class="text-[0.7rem] text-gray-500">
-            No champion yet combines volume + overperformance enough to be a true season signature.
-          </div>`
+          <div class="text-[0.7rem] text-gray-500">No champion yet combines volume + overperformance enough to be a true season signature.</div>`
         }
       </div>
       ${
         nextBestSig
           ? `
-        <div class="mt-2 pt-2 border-top border-orange-100">
-          <div class="text-[0.6rem] font-semibold text-orange-500 uppercase">
-            Next Best Signature
-          </div>
-          <div class="text-[0.7rem] text-gray-800">
-            ${nextBestSig.champ} ${nextBestSig.role} · ${nextBestSig.pilot}
-          </div>
+        <div class="mt-2 pt-2 border-t border-orange-100">
+          <div class="text-[0.6rem] font-semibold text-orange-500 uppercase">Next Best Signature</div>
+          <div class="text-[0.7rem] text-gray-800">${nextBestSig.champ} ${nextBestSig.role} · ${nextBestSig.pilot}</div>
           <div class="text-[0.6rem] text-gray-600">
-            ${nextBestSig.wr.toFixed(1)}% WR,
-            KDA ${nextBestSig.kda.toFixed(2)} (${nextBestSig.games} g)
+            ${nextBestSig.wr.toFixed(1)}% WR, KDA ${nextBestSig.kda.toFixed(2)} (${nextBestSig.games} g)
           </div>
         </div>`
           : ""
@@ -3000,9 +3412,140 @@ function renderTeamSynergy(data) {
   `;
 
   // ==========================================================================
-  // 7) Detailed subsections
+  // 8) Core Identity Team Comp mini-card
   // ==========================================================================
+  const roleLabel = {
+    TOP: "TOP",
+    JUNGLE: "JUNGLE",
+    MID: "MID",
+    BOTTOM: "BOTTOM",
+    SUPPORT: "SUPPORT",
+  };
 
+  const coreCompSlots = ROLE_ORDER.map((role) => {
+    const picks = roleSignatures[role] || [];
+    return picks[0] || null;
+  }).filter(Boolean);
+
+  const coreCompHTML =
+    coreCompSlots.length > 0
+      ? `
+      <div class="mb-3">
+        <div class="p-3 rounded-2xl bg-indigo-50 border border-indigo-100">
+          <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-2">
+            <div class="text-[0.7rem] font-semibold text-indigo-500 uppercase">
+              Core Identity Team Comp
+            </div>
+            <div class="text-[0.6rem] text-indigo-400">
+              Built from your top signature picks — default comp when drafts allow.
+            </div>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            ${ROLE_ORDER.map((role) => {
+              const s = (roleSignatures[role] || [])[0];
+              if (!s) {
+                return `
+                  <div class="rounded-xl border border-dashed border-indigo-100 bg-white/40 px-2 py-2 text-[0.65rem] text-gray-400 flex flex-col justify-center">
+                    <div class="font-semibold text-indigo-300 uppercase">${roleLabel[role] || role}</div>
+                    <div>No clear identity pick yet.</div>
+                  </div>`;
+              }
+              const laneText =
+                s.laneSummary && s.laneSummary.minutes >= 12
+                  ? s.laneSummary.goldAvg > 150
+                    ? `Early +${s.laneSummary.goldAvg.toFixed(0)}g, ${(s.laneSummary.laneWinRate * 100).toFixed(0)}% adv. minutes`
+                    : `${(s.laneSummary.laneWinRate * 100).toFixed(0)}% advantaged minutes`
+                  : "";
+              return `
+                <div class="rounded-xl bg-white shadow-[0_1px_4px_rgba(15,23,42,0.06)] px-2 py-2 text-[0.65rem] flex flex-col justify-between">
+                  <div>
+                    <div class="font-semibold text-indigo-400 uppercase">${roleLabel[role] || role}</div>
+                    <div class="text-[0.8rem] font-semibold text-gray-900">${s.champ}</div>
+                    <div class="text-[0.65rem] text-gray-700">${s.pilot}</div>
+                  </div>
+                  <div class="mt-1 text-[0.6rem] text-gray-500">
+                    ${s.wr.toFixed(1)}% WR · ${s.games} g
+                    ${laneText ? `<br><span class="text-indigo-400">${laneText}</span>` : ""}
+                  </div>
+                </div>`;
+            }).join("")}
+          </div>
+        </div>
+      </div>
+    `
+      : "";
+
+  // ==========================================================================
+  // 9) NEW — Top Team Comps (champ-based mini-cards)
+  // ==========================================================================
+  const teamCompHTML =
+    teamCompArr.length
+      ? `
+      <div class="mb-4">
+        <div class="p-3 rounded-2xl bg-purple-50 border border-purple-100">
+          <div class="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 mb-2">
+            <div class="text-[0.7rem] font-semibold text-purple-500 uppercase">
+              Top Team Comps (Champs)
+            </div>
+            <div class="text-[0.6rem] text-purple-400">
+              Uses WR + early lane & team gold from timeline.
+            </div>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-3">
+            ${teamCompArr
+              .map((c, idx) => {
+                const champsLine = ROLE_ORDER
+                  .map((role) => c.roles[role])
+                  .filter(Boolean)
+                  .join(" · ");
+                const earlyText =
+                  c.avgEarlyLane
+                    ? `${c.avgEarlyLane >= 0 ? "+" : ""}${c.avgEarlyLane.toFixed(0)}g lane diff`
+                    : "";
+                const tempoText =
+                  c.avgGold10
+                    ? `${c.avgGold10 >= 0 ? "+" : ""}${c.avgGold10.toFixed(
+                        0
+                      )}g @10`
+                    : "";
+                const smallLine =
+                  earlyText || tempoText
+                    ? [earlyText, tempoText].filter(Boolean).join(" · ")
+                    : "";
+                return `
+                  <div class="rounded-xl bg-white shadow-[0_1px_4px_rgba(15,23,42,0.06)] px-2 py-2 text-[0.65rem] flex flex-col justify-between">
+                    <div>
+                      <div class="flex items-baseline justify-between gap-1">
+                        <div class="font-semibold text-purple-500">Comp #${idx + 1}</div>
+                        <div class="text-[0.6rem] text-gray-500">${c.games} g</div>
+                      </div>
+                      <div class="mt-1 text-[0.7rem] text-gray-900 leading-tight">
+                        ${champsLine}
+                      </div>
+                    </div>
+                    <div class="mt-1 text-[0.6rem] text-gray-600">
+                      <span class="font-semibold">${c.wr.toFixed(1)}% WR</span>
+                      <span class="${c.lift >= 0 ? "text-emerald-600" : "text-red-500"}">
+                        (${c.lift >= 0 ? "+" : ""}${c.lift.toFixed(1)}pp vs team)
+                      </span>
+                      ${
+                        smallLine
+                          ? `<br><span class="text-purple-500">${smallLine}</span>`
+                          : ""
+                      }
+                    </div>
+                  </div>`;
+              })
+              .join("")}
+          </div>
+        </div>
+      </div>
+    `
+      : "";
+
+  // ==========================================================================
+  // 10) Detailed subsections
+  // ==========================================================================
   const duoHTML =
     duoArr.length > 0
       ? `
@@ -3026,9 +3569,7 @@ function renderTeamSynergy(data) {
                 <td class="py-0.5">${d.p1} + ${d.p2}</td>
                 <td class="py-0.5 text-right">${d.games}</td>
                 <td class="py-0.5 text-right">${d.winrate.toFixed(1)}%</td>
-                <td class="py-0.5 text-right ${
-                  d.lift >= 0 ? "text-emerald-600" : "text-red-500"
-                }">
+                <td class="py-0.5 text-right ${d.lift >= 0 ? "text-emerald-600" : "text-red-500"}">
                   ${d.lift >= 0 ? "+" : ""}${d.lift.toFixed(1)}pp
                 </td>
                 <td class="py-0.5 text-right text-sky-600">${d.syn.toFixed(1)}</td>
@@ -3053,9 +3594,9 @@ function renderTeamSynergy(data) {
               <div>${c.adc} + ${c.sup}</div>
               <div class="text-right">
                 <div class="font-semibold">${c.winrate.toFixed(1)}%</div>
-                <div class="${
-                  c.lift >= 0 ? "text-emerald-600" : "text-red-500"
-                }">${c.lift >= 0 ? "+" : ""}${c.lift.toFixed(1)}pp</div>
+                <div class="${c.lift >= 0 ? "text-emerald-600" : "text-red-500"}">
+                  ${c.lift >= 0 ? "+" : ""}${c.lift.toFixed(1)}pp
+                </div>
               </div>
             </div>`
             )
@@ -3063,14 +3604,6 @@ function renderTeamSynergy(data) {
         </div>
       </div>`
       : "";
-
-  const roleLabel = {
-    TOP: "TOP",
-    JUNGLE: "JUNGLE",
-    MID: "MID",
-    BOTTOM: "BOTTOM",
-    SUPPORT: "SUPPORT",
-  };
 
   const signatureHTML = `
     <div>
@@ -3090,9 +3623,7 @@ function renderTeamSynergy(data) {
                 <div class="text-[0.65rem] font-semibold text-orange-500 uppercase">
                   ${roleLabel[role] || role}
                 </div>
-                <div class="text-[0.6rem] text-gray-500">
-                  Signature ${picks.length > 1 ? "Top 3" : "Pick"}
-                </div>
+                <div class="text-[0.6rem] text-gray-500">Signature ${picks.length > 1 ? "Top 3" : "Pick"}</div>
               </div>
               <div class="grid gap-1">
                 ${picks
@@ -3101,9 +3632,7 @@ function renderTeamSynergy(data) {
                   <div class="flex justify-between gap-2">
                     <div class="font-semibold text-gray-800">${s.champ}</div>
                     <div class="text-right text-[0.65rem] text-gray-700">
-                      ${s.pilot} · ${s.wr.toFixed(1)}% WR, KDA ${s.kda.toFixed(
-                      2
-                    )} (${s.games} g)
+                      ${s.pilot} · ${s.wr.toFixed(1)}% WR, KDA ${s.kda.toFixed(2)} (${s.games} g)
                       <div class="text-[0.6rem] text-gray-500">
                         ${s.fallback ? "best performing option so far" : explainSignature(s)}
                       </div>
@@ -3127,9 +3656,8 @@ function renderTeamSynergy(data) {
     </div>`;
 
   // ==========================================================================
-  // 8) Tabs (aligned with main dashboard controls)
+  // 11) Tabs (aligned with main dashboard controls)
   // ==========================================================================
-
   const trendButtons = `
     <div class="flex items-center gap-1 bg-sky-50 px-1 py-1 rounded-full shadow-inner">
       ${[
@@ -3155,19 +3683,16 @@ function renderTeamSynergy(data) {
     </div>`;
 
   // ==========================================================================
-  // Render
+  // 12) Render
   // ==========================================================================
-
   container.innerHTML = `
     <section class="section-wrapper fade-in mb-10">
       <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
           <div>
-            <h2 class="text-[1.1rem] font-semibold text-sky-500 tracking-tight">
-              Team Synergy & Identity
-            </h2>
+            <h2 class="text-[1.1rem] font-semibold text-sky-500 tracking-tight">Team Synergy & Identity</h2>
             <p class="text-[0.7rem] text-gray-600">
-              Uses synergy, objective, and impact metrics to reveal who works best together,
+              Uses synergy, objective, impact, and lane timeline metrics to reveal who works best together,
               which picks define your style, and which levers actually drive your wins.
             </p>
           </div>
@@ -3175,12 +3700,13 @@ function renderTeamSynergy(data) {
         </div>
 
         ${highlightCards}
+        ${coreCompHTML}
+        ${teamCompHTML}
 
         <div class="grid md:grid-cols-2 gap-4 mt-1">
           <div class="fade-in delay-1">
             ${duoHTML}
             ${botHTML}
-            ${objectiveHTML}
           </div>
           <div class="fade-in delay-2">
             ${signatureHTML}
@@ -3195,11 +3721,12 @@ function renderTeamSynergy(data) {
   container.querySelectorAll("[data-synergy-window]").forEach((btn) => {
     btn.addEventListener("click", () => {
       synergyTrendWindow = btn.getAttribute("data-synergy-window");
-      renderTeamSynergy(data);
+      renderTeamSynergy(data, timelineData);
     });
   });
 
-  console.log("🧩 Team Synergy v3.4", {
+  // --- Safe debug log ---
+  console.log("🧩 Team Synergy v3.7", {
     currentSeason,
     currentSplit,
     games: totalGames,
@@ -3207,397 +3734,2044 @@ function renderTeamSynergy(data) {
     duos: duoArr,
     botCombos: botArr,
     roleSignatures,
-    objectiveImpacts,
+    teamComps: teamCompArr,
+    timelinePickStats,
+    earlyByGameRole,
     dna,
   });
 }
 
 
+/// ============================================================================
+// 🎯 OBJECTIVES — First-Hit Impact v2.8
+// UI: Presence mini-cards now wrap in a responsive grid (no horizontal scroll)
+// UI: Presence cards are taller + cleaner stats layout (2x2)
+// Math: infer our TeamId per match (no hard-coded 200), and dedupe objective moments per minute
+// ============================================================================
 
+let objectivesTrendWindow = "season";
+let objectivesObjectiveGroup = "big"; // "small" | "big"
 
+function renderObjectives(statsData, timelineData) {
+  const container = document.getElementById("objectives");
+  if (!container || !statsData || !statsData.length) return;
 
-
-// --- PERFORMANCE IMPACT v4.1.0 ---
-// Unified visual style with fade-in, orange-accent buttons, and no emoji titles.
-// Calculations, data logic, and trend system remain 100% identical.
-
-function renderPerformanceImpact(data) {
-  if (!data || data.length === 0) return;
-
+  // --- Helpers ---
   const toNum = (v) => {
-    if (v === undefined || v === null) return 0;
+    if (v === undefined || v === null || v === "") return 0;
     const n = parseFloat(String(v).replace("%", "").replace(",", "."));
     return Number.isFinite(n) ? n : 0;
   };
 
-  // --- Detect active season & split dynamically ---
-  const allSeasons = [...new Set(data.map((r) => r["Season"]))].filter(Boolean);
-  const currentSeason = allSeasons[allSeasons.length - 1];
-  const splitsInSeason = [...new Set(data.filter((r) => r["Season"] === currentSeason).map((r) => r["Split"]))];
-  const currentSplit = splitsInSeason[splitsInSeason.length - 1];
+  const normSeason = (v) => String(v ?? "").trim();
+  const normSplitNum = (v) => {
+    const s = String(v ?? "").trim();
+    if (!s) return null;
+    const n = parseInt(s, 10);
+    return Number.isFinite(n) ? n : null;
+  };
 
-  // --- Load selected view mode ---
-  let trendWindow = localStorage.getItem("trendWindowPerfImpact") || "10";
-  const valid = ["5", "10", "currentSplit", "season"];
-  if (!valid.includes(trendWindow)) trendWindow = "10";
+  const getGameId = (r) =>
+    r["Match ID"] ||
+    r["MatchID"] ||
+    r["Game #"] ||
+    r["Game ID"] ||
+    r["GameId"] ||
+    r["Game"] ||
+    r["Date"];
 
-  // --- Filter data by window type ---
-  let filtered = data.filter((r) => r["Season"] === currentSeason);
-  if (trendWindow !== "season") filtered = filtered.filter((r) => r["Split"] === currentSplit);
+  const isWin = (res) => String(res || "").toLowerCase() === "win";
 
-  if (trendWindow === "5" || trendWindow === "10") {
-    const nums = [...new Set(filtered.map((r) => toNum(r["Game #"])))].filter((n) => n > 0).sort((a, b) => a - b);
-    const max = Math.max(...nums);
-    const min = Math.max(1, max - parseInt(trendWindow) + 1);
-    filtered = filtered.filter((r) => toNum(r["Game #"]) >= min && toNum(r["Game #"]) <= max);
+  const hasCol = (col) =>
+    statsData[0] && Object.prototype.hasOwnProperty.call(statsData[0], col);
+
+  const boolTrue = (v) => String(v).toUpperCase() === "TRUE" || String(v) === "1";
+  const boolFalse = (v) =>
+    String(v).toUpperCase() === "FALSE" || String(v) === "0";
+
+  const playerKey = (r) =>
+    r["Player"] || r["Summoner Name"] || r["Summoner"] || r["IGN"];
+
+  const getRoleRaw = (r) =>
+    r["Role"] ||
+    r["Position"] ||
+    r["Lane"] ||
+    r["ROLE"] ||
+    r["POSITION"] ||
+    "";
+
+  const getRoleNorm = (r) => String(getRoleRaw(r) || "").toUpperCase().trim();
+
+  const getTeamId = (r) => String(r["TeamId"] ?? r["teamId"] ?? "");
+
+  const formatSigned = (v, unit = "") => {
+    const val = Math.round(v || 0);
+    if (val === 0) return `0${unit}`;
+    const sign = val > 0 ? "+" : "";
+    return `${sign}${val}${unit}`;
+  };
+
+  const ordinal = (n) =>
+    n === 1
+      ? "First"
+      : n === 2
+      ? "Second"
+      : n === 3
+      ? "Third"
+      : n === 4
+      ? "Fourth"
+      : `${n}th`;
+
+  // --- Detect current season & split from dataset ---
+  const seasons = [
+    ...new Set(
+      statsData.map((r) => normSeason(r["Season"])).filter(Boolean)
+    ),
+  ];
+  const currentSeason = seasons.length ? seasons[seasons.length - 1] : null;
+
+  const splitCandidates = statsData
+    .filter((r) =>
+      currentSeason ? normSeason(r["Season"]) === currentSeason : true
+    )
+    .map((r) => normSplitNum(r["Split"]))
+    .filter((n) => n !== null);
+
+  const currentSplit =
+    splitCandidates.length > 0 ? Math.max(...splitCandidates) : null;
+
+  // --- Window filtering (match-based) on main stats sheet ---
+  const getRecentGames = (n) => {
+    const allGames = statsData.map((r) => getGameId(r)).filter(Boolean);
+    const uniqueGames = [...new Set(allGames)];
+    const recentGames = uniqueGames.slice(-n);
+    return statsData.filter((r) => recentGames.includes(getGameId(r)));
+  };
+
+  const filteredData = (() => {
+    switch (objectivesTrendWindow) {
+      case "5":
+        return getRecentGames(5);
+      case "10":
+        return getRecentGames(10);
+      case "split":
+        if (currentSplit == null) return statsData;
+        return statsData.filter(
+          (r) => normSplitNum(r["Split"]) === currentSplit
+        );
+      case "season":
+      default: {
+        if (!currentSeason) return statsData;
+        return statsData.filter(
+          (r) => normSeason(r["Season"]) === currentSeason
+        );
+      }
+    }
+  })();
+
+  if (!filteredData.length) {
+    container.innerHTML = `
+      <section class="section-wrapper fade-in mb-10">
+        <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100">
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+            <div>
+              <h2 class="text-[1.1rem] font-semibold text-sky-500 tracking-tight">Objectives — First Hit Impact</h2>
+              <p class="text-[0.7rem] text-gray-600">
+                No games in this window yet — change the window to see first-objective impact.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>`;
+    return;
   }
 
-  // --- Aggregate player data ---
-  const playerScores = {};
-  const playerRoles = {};
+  // --- Group by game (main stats) ---
+  const games = {};
+  filteredData.forEach((r) => {
+    const id = getGameId(r);
+    if (!id) return;
+    if (!games[id]) {
+      games[id] = {
+        id,
+        rows: [],
+        result: isWin(r["Result"]) ? "Win" : "Loss",
+      };
+    }
+    games[id].rows.push(r);
+  });
 
-  filtered.forEach((r) => {
-    const name = r["Player"]?.trim();
-    const role = (r["ROLE"] || "").trim().toUpperCase();
+  const gameList = Object.values(games);
+  if (!gameList.length) return;
+
+  const totalGames = gameList.length || 1;
+
+  // ============================================================================
+  // 🧩 Role Profiles (from stats dataset)
+  // ============================================================================
+
+  const roleProfileByPlayer = {};
+  const seenPlayerGame = new Set();
+
+  filteredData.forEach((r) => {
+    const name = playerKey(r);
     if (!name) return;
+    const role = getRoleNorm(r) || "UNKNOWN";
+    const gid = getGameId(r) || "";
+    const key = `${name}||${gid}`;
+    if (!gid || seenPlayerGame.has(key)) return;
+    seenPlayerGame.add(key);
 
-    if (!playerScores[name])
-      playerScores[name] = {
-        games: new Set(),
-        count: 0,
-        kda: 0, teamDmg: 0, mvpAce: 0,
-        objImpact: 0, objControl: 0, objConvert: 0,
-        vision: 0, visAdv: 0, visDeny: 0,
-        tempo: 0, macro: 0, goldMom: 0,
-        synergy: 0, shared: 0, teamCoord: 0,
-        mech: 0, tactical: 0
+    if (!roleProfileByPlayer[name]) {
+      roleProfileByPlayer[name] = {
+        player: name,
+        games: 0,
+        roles: {}, // ROLE -> count
+      };
+    }
+    const p = roleProfileByPlayer[name];
+    p.games += 1;
+    if (!p.roles[role]) p.roles[role] = 0;
+    p.roles[role] += 1;
+  });
+
+  const roleViews = {}; // player -> { primaryRole, primaryShare, flexRoles: [{role, share}] }
+
+  Object.values(roleProfileByPlayer).forEach((p) => {
+    if (!p.games) return;
+    const entries = Object.entries(p.roles).sort((a, b) => b[1] - a[1]);
+    const [primaryRole, primaryCount] = entries[0] || ["UNKNOWN", 0];
+    const primaryShare = primaryCount / p.games;
+    const flexRoles = entries
+      .slice(1)
+      .map(([role, count]) => ({
+        role,
+        share: count / p.games,
+      }))
+      .filter((fr) => fr.share >= 0.1);
+
+    roleViews[p.player] = {
+      primaryRole,
+      primaryShare,
+      flexRoles,
+      games: p.games,
+    };
+  });
+
+  // --- Helper: column picking & Atakhan/Void detection (from main stats) ---
+  const pickCol = (candidates) => candidates.find((c) => hasCol(c)) || null;
+
+  function detectSingleOwnerByParticipation(g, partCols = [], killCols = []) {
+    const any = (cols, row) =>
+      cols.some((c) => hasCol(c) && toNum(row[c]) > 0);
+
+    // Only our team rows in dataset → if none show participation/kills, assume enemy took it.
+    const weAny = g.rows.some((r) => any(partCols, r) || any(killCols, r));
+    return { weFirst: weAny, theyFirst: !weAny };
+  }
+
+  // --- FIRST-only objective definitions (from main stats sheet) ---
+  const firstOnlyDefs = [
+    {
+      key: "fb",
+      label: "🩸 First Blood",
+      group: "small",
+      teamCols: [
+        "First Blood (Team)",
+        "FirstBlood (Team)",
+        "FB (Team)",
+        "First Blood",
+        "First Blood Team",
+      ],
+      enemyCols: [
+        "First Blood (Enemy)",
+        "FirstBlood (Enemy)",
+        "FB (Enemy)",
+        "First Blood Enemy",
+      ],
+    },
+    {
+      key: "ftower",
+      label: "🏛️ First Tower",
+      group: "small",
+      teamCols: [
+        "First Tower (Team)",
+        "First Turret (Team)",
+        "First Tower",
+        "First Turret",
+      ],
+      enemyCols: [
+        "First Tower (Enemy)",
+        "First Turret (Enemy)",
+        "First Tower Enemy",
+        "First Turret Enemy",
+      ],
+    },
+    {
+      key: "finhib",
+      label: "🏚️ First Inhibitor",
+      group: "small",
+      teamCols: [
+        "First Inhibitor (Team)",
+        "First Inhib (Team)",
+        "First Inhibitor",
+      ],
+      enemyCols: [
+        "First Inhibitor (Enemy)",
+        "First Inhib (Enemy)",
+        "First Inhibitor Enemy",
+      ],
+    },
+    {
+      key: "dragon",
+      label: "🐉 First Dragon",
+      group: "big",
+      teamCols: [
+        "First Dragon (Team)",
+        "FirstDrake (Team)",
+        "First Drake (Team)",
+      ],
+      enemyCols: [
+        "First Dragon (Enemy)",
+        "FirstDrake (Enemy)",
+        "First Drake (Enemy)",
+      ],
+    },
+    {
+      key: "soul",
+      label: "💠 Dragon Soul",
+      group: "big",
+      teamCols: [
+        "Dragon Soul (Team)",
+        "Soul (Team)",
+        "First Soul (Team)",
+      ],
+      enemyCols: [
+        "Dragon Soul (Enemy)",
+        "Soul (Enemy)",
+        "First Soul (Enemy)",
+      ],
+    },
+    {
+      key: "elder",
+      label: "🐲 Elder Dragon",
+      group: "big",
+      teamCols: [
+        "Elder Dragon (Team)",
+        "Elder (Team)",
+      ],
+      enemyCols: [
+        "Elder Dragon (Enemy)",
+        "Elder (Enemy)",
+      ],
+    },
+    {
+      key: "herald",
+      label: "👁️ First Herald",
+      group: "big",
+      teamCols: [
+        "First Herald (Team)",
+        "First Rift Herald (Team)",
+      ],
+      enemyCols: [
+        "First Herald (Enemy)",
+        "First Rift Herald (Enemy)",
+      ],
+    },
+    {
+      key: "baron",
+      label: "🧬 First Baron",
+      group: "big",
+      teamCols: [
+        "First Baron (Team)",
+        "First Nashor (Team)",
+      ],
+      enemyCols: [
+        "First Baron (Enemy)",
+        "First Nashor (Enemy)",
+      ],
+    },
+    {
+      key: "atakhan",
+      label: "🔥 First Atakhan",
+      group: "big",
+      detect: (g) =>
+        detectSingleOwnerByParticipation(
+          g,
+          ["Atakhan Participation"],
+          ["Atakhan Kills"]
+        ),
+    },
+    {
+      key: "void",
+      label: "🪲 First Void Grubs",
+      group: "big",
+      detect: (g) =>
+        detectSingleOwnerByParticipation(
+          g,
+          ["Void Grub Participation", "Void Grubs Participation"],
+          ["Void Grub Kills", "Void Grubs Kills"]
+        ),
+    },
+  ];
+
+  // --- Compute WR split for each first objective (main stats) ---
+  const firstOnlyImpacts = firstOnlyDefs
+    .map((def) => {
+      const teamCol = def.teamCols ? pickCol(def.teamCols) : null;
+      const enemyCol = def.enemyCols ? pickCol(def.enemyCols) : null;
+
+      if (!def.detect && !teamCol && !enemyCol) return null;
+
+      let weFirstGames = 0,
+        weFirstWins = 0;
+      let theyFirstGames = 0,
+        theyFirstWins = 0;
+
+      gameList.forEach((g) => {
+        const row = g.rows[0] || {};
+        let weFirst = false,
+          theyFirst = false;
+
+        if (def.detect) {
+          const res = def.detect(g);
+          weFirst = !!res.weFirst;
+          theyFirst = !!res.theyFirst;
+        } else {
+          weFirst = teamCol ? boolTrue(row[teamCol]) : false;
+          theyFirst = enemyCol ? boolTrue(row[enemyCol]) : false;
+
+          // SPECIAL FALLBACK: only a team-only First Blood column
+          if (!enemyCol && teamCol && def.key === "fb") {
+            if (boolFalse(row[teamCol])) theyFirst = true;
+          }
+        }
+
+        if (!weFirst && !theyFirst) return;
+
+        if (weFirst) {
+          weFirstGames++;
+          if (g.result === "Win") weFirstWins++;
+        } else if (theyFirst) {
+          theyFirstGames++;
+          if (g.result === "Win") theyFirstWins++;
+        }
+      });
+
+      const totalConsidered = weFirstGames + theyFirstGames;
+      if (!totalConsidered) return null;
+
+      const wrWeFirst = weFirstGames
+        ? (weFirstWins / weFirstGames) * 100
+        : 0;
+      const wrTheyFirst = theyFirstGames
+        ? (theyFirstWins / theyFirstGames) * 100
+        : 0;
+      const delta = wrWeFirst - wrTheyFirst;
+
+      return {
+        key: def.key,
+        label: def.label,
+        group: def.group || "big",
+        wrWeFirst,
+        wrTheyFirst,
+        weFirstGames,
+        theyFirstGames,
+        delta,
+        total: totalConsidered,
+      };
+    })
+    .filter(Boolean);
+
+  const totalObjectivesGames = firstOnlyImpacts.reduce(
+    (acc, o) => acc + o.total,
+    0
+  );
+
+  // Active tab subset (small vs big)
+  const impactsActiveRaw = firstOnlyImpacts.filter(
+    (o) => o.group === objectivesObjectiveGroup
+  );
+  const impactsActive =
+    impactsActiveRaw.length > 0 ? impactsActiveRaw : firstOnlyImpacts;
+  const totalObjectivesGamesActive = impactsActive.reduce(
+    (acc, o) => acc + o.total,
+    0
+  );
+
+  // ============================================================================
+  // ⏱️ Timeline integration — Presence + Cross-Pressure + Objective context
+  // + Drake-by-Drake + Elder/Baron Play
+  // ============================================================================
+
+  let lateSummaryHTML = "";
+  let objectiveAttendance = null;
+  let objectiveContext = null;
+  let drakeSectionHTML = "";
+  let elderBaronSectionHTML = "";
+
+  if (timelineData && timelineData.length) {
+    // 1) Restrict timeline to games in current window
+    const windowGameIds = new Set(gameList.map((g) => g.id));
+    const tlRows = timelineData.filter((r) => {
+      const mid =
+        r["Match ID"] ||
+        r["MatchID"] ||
+        r["Game ID"] ||
+        r["GameId"] ||
+        r["Game"] ||
+        r["Date"];
+      if (!mid) return false;
+      return windowGameIds.has(mid);
+    });
+
+    if (tlRows.length) {
+      // 2) Group by game + minute
+      const framesByGame = {};
+      tlRows.forEach((r) => {
+        const mid =
+          r["Match ID"] ||
+          r["MatchID"] ||
+          r["Game ID"] ||
+          r["GameId"] ||
+          r["Game"] ||
+          r["Date"];
+        if (!mid) return;
+        const minute = toNum(r["Minute"]);
+        if (!framesByGame[mid]) framesByGame[mid] = {};
+        if (!framesByGame[mid][minute]) framesByGame[mid][minute] = [];
+        framesByGame[mid][minute].push(r);
+      });
+
+      // ✅ v2.8: infer OUR teamId per match from player overlap (more robust than hardcoding 200)
+      const rosterSet = new Set(Object.keys(roleViews || {}));
+      const ourTeamIdByMatch = {};
+      Object.entries(framesByGame).forEach(([matchId, minuteFrames]) => {
+        const mins = Object.keys(minuteFrames)
+          .map((m) => toNum(m))
+          .sort((a, b) => a - b);
+        const sampleMinute = mins.length ? mins[0] : null;
+        const frame = sampleMinute != null ? minuteFrames[sampleMinute] : null;
+        if (!frame || !frame.length) {
+          ourTeamIdByMatch[matchId] = "200";
+          return;
+        }
+
+        const byTeam = {};
+        frame.forEach((row) => {
+          const tid = getTeamId(row);
+          if (!tid) return;
+          if (!byTeam[tid]) byTeam[tid] = new Set();
+          const name = playerKey(row);
+          if (name) byTeam[tid].add(name);
+        });
+
+        const ids = Object.keys(byTeam);
+        if (!ids.length) {
+          ourTeamIdByMatch[matchId] = "200";
+          return;
+        }
+        if (ids.length === 1) {
+          ourTeamIdByMatch[matchId] = ids[0];
+          return;
+        }
+
+        const overlapScore = (tid) => {
+          const set = byTeam[tid];
+          if (!set || !set.size || !rosterSet.size) return 0;
+          let c = 0;
+          set.forEach((n) => {
+            if (rosterSet.has(n)) c += 1;
+          });
+          return c;
+        };
+
+        let best = ids[0];
+        let bestScore = -1;
+        ids.forEach((tid) => {
+          const sc = overlapScore(tid);
+          if (sc > bestScore) {
+            bestScore = sc;
+            best = tid;
+          }
+        });
+
+        ourTeamIdByMatch[matchId] = bestScore > 0 ? best : "200";
+      });
+
+      const objectiveEventMap = new Map(); // key: "matchId|minute" -> type
+      const typePriority = { baron: 6, elder: 5, dragon: 4, herald: 3, atakhan: 2, void: 1 };
+      const addObjectiveMoment = (matchId, minute, type) => {
+        const key = `${matchId}|${minute}`;
+        const prev = objectiveEventMap.get(key);
+        if (!prev) {
+          objectiveEventMap.set(key, type);
+          return;
+        }
+        if ((typePriority[type] || 0) > (typePriority[prev] || 0)) {
+          objectiveEventMap.set(key, type);
+        }
       };
 
-    const s = playerScores[name];
-    s.kda += toNum(r["KDA"]);
-    s.teamDmg += toNum(r["Team Damage %"]);
-    s.mvpAce += (String(r["MVP"]).toLowerCase() === "yes" ? 1 : 0) + (String(r["ACE"]).toLowerCase() === "yes" ? 1 : 0);
-    s.objImpact += toNum(r["Impact"]);
-    s.objControl += toNum(r["Objective Control Balance"]);
-    s.objConvert += toNum(r["Objective Conversion Rate"]);
-    s.vision += toNum(r["Vision Score"]);
-    s.visAdv += toNum(r["Vision Advantage"]);
-    s.visDeny += toNum(r["Vision Denial Efficiency"]);
-    s.tempo += toNum(r["Tempo Efficiency Index"]);
-    s.macro += toNum(r["Macro Consistency"]);
-    s.goldMom += toNum(r["Gold Momentum Rate"]);
-    s.synergy += toNum(r["Synergy Index"]);
-    s.shared += toNum(r["Shared Participation Rate"]);
-    s.teamCoord += toNum(r["Team Coordination Efficiency"]);
-    s.mech += toNum(r["Mechanical Impact"]);
-    s.tactical += toNum(r["Tactical Intelligence"]);
+      const drakeEvents = [];     // { matchId, minute, ourIndex, enemyIndex, taker, globalIndex, isElder }
+      const elderBuffEvents = []; // { matchId, minute, taker }
+      const baronBuffEvents = []; // { matchId, minute, taker }
 
-    s.count++;
-    s.games.add(r["Game #"]);
+      // Helpers for minute lookups
+      const getClosestMinuteLE = (frames, targetMinute) => {
+        const keys = Object.keys(frames);
+        let best = null;
+        for (let i = 0; i < keys.length; i++) {
+          const m = toNum(keys[i]);
+          if (m <= targetMinute && (best === null || m > best)) {
+            best = m;
+          }
+        }
+        return best;
+      };
 
-    if (!playerRoles[name]) playerRoles[name] = {};
-    if (role) playerRoles[name][role] = (playerRoles[name][role] || 0) + 1;
-  });
+      const getMinuteAtOrAfter = (frames, targetMinute) => {
+        const nums = Object.keys(frames)
+          .map((k) => toNum(k))
+          .sort((a, b) => a - b);
+        let candidate = null;
+        for (let i = 0; i < nums.length; i++) {
+          const m = nums[i];
+          if (m >= targetMinute) {
+            candidate = m;
+            break;
+          }
+        }
+        if (candidate === null && nums.length) {
+          candidate = nums[nums.length - 1];
+        }
+        return candidate;
+      };
 
-  // --- Normalize helpers ---
-  const normalize = (v, arr) => {
-    const valid = arr.filter((n) => n > 0);
-    if (!valid.length) return v;
-    const avg = valid.reduce((a, b) => a + b, 0) / valid.length;
-    return avg > 0 ? v / avg : v;
-  };
+      // 3) Detect objective moments per game
+      Object.entries(framesByGame).forEach(([matchId, minuteFrames]) => {
+        const minutes = Object.keys(minuteFrames)
+          .map((m) => toNum(m))
+          .sort((a, b) => a - b);
 
-  const metrics = [
-    "kda","teamDmg","mvpAce","objImpact","objControl","objConvert",
-    "vision","visAdv","visDeny","tempo","macro","goldMom",
-    "synergy","shared","teamCoord","mech","tactical"
-  ];
-  const allVals = {};
-  metrics.forEach((m) => { allVals[m] = Object.values(playerScores).map((p) => p[m] / (p.count || 1)); });
+        let prevTeamDrag = 0,
+          prevEnemyDrag = 0,
+          prevHerald = 0,
+          prevTeamBaron = 0,
+          prevEnemyBaron = 0,
+          prevVoid = 0,
+          prevAtakhan = 0,
+          globalDrakeCount = 0;
 
-  // --- Determine primary role ---
-  const primaryRoles = {};
-  for (const [n, roles] of Object.entries(playerRoles)) {
-    const sorted = Object.entries(roles).sort((a, b) => b[1] - a[1]);
-    const main = sorted[0]?.[0] || "FLEX";
-    primaryRoles[n] = sorted.length > 1 && sorted[1][1] / sorted[0][1] >= 0.3 ? "FLEX" : main;
+        const ourId = ourTeamIdByMatch[matchId] || "200";
+
+        minutes.forEach((minute) => {
+          const frame = minuteFrames[minute];
+          if (!frame || !frame.length) return;
+
+          // ✅ use our teamId for the "Team vs Enemy" counters
+          const ourRow =
+            frame.find((r) => getTeamId(r) === ourId) || frame[0] || null;
+          if (!ourRow) return;
+
+          const tDragTeam = toNum(ourRow["Team Dragons"]);
+          const tDragEnemy = toNum(ourRow["Enemy Dragons"]);
+          const tHerald = toNum(ourRow["Team Heralds"]);
+          const tBaronTeam = toNum(ourRow["Team Barons"]);
+          const tBaronEnemy = toNum(ourRow["Enemy Barons"]);
+          const tVoid = toNum(ourRow["Team Voidgrubs"]);
+          const tAtak = toNum(ourRow["Team Atakhans"]);
+
+          // DRAGONS (our team takes) -> objective moments (dragon/elder)
+          if (tDragTeam > prevTeamDrag) {
+            for (let idx = prevTeamDrag + 1; idx <= tDragTeam; idx++) {
+              globalDrakeCount += 1;
+              const isElder = globalDrakeCount >= 5;
+              drakeEvents.push({
+                matchId,
+                minute,
+                ourIndex: idx,
+                enemyIndex: null,
+                taker: "us",
+                globalIndex: globalDrakeCount,
+                isElder,
+              });
+
+              addObjectiveMoment(matchId, minute, isElder ? "elder" : "dragon");
+
+              if (isElder) {
+                elderBuffEvents.push({ matchId, minute, taker: "us" });
+              }
+            }
+          }
+
+          // DRAGONS (enemy takes) (no presence moment; but buff event matters)
+          if (tDragEnemy > prevEnemyDrag) {
+            for (let idx = prevEnemyDrag + 1; idx <= tDragEnemy; idx++) {
+              globalDrakeCount += 1;
+              const isElder = globalDrakeCount >= 5;
+              drakeEvents.push({
+                matchId,
+                minute,
+                ourIndex: null,
+                enemyIndex: idx,
+                taker: "enemy",
+                globalIndex: globalDrakeCount,
+                isElder,
+              });
+              if (isElder) {
+                elderBuffEvents.push({ matchId, minute, taker: "enemy" });
+              }
+            }
+          }
+
+          // HERALD (our side)
+          if (tHerald > prevHerald) {
+            addObjectiveMoment(matchId, minute, "herald");
+          }
+
+          // BARONS (both sides, + buff events)
+          if (tBaronTeam > prevTeamBaron) {
+            addObjectiveMoment(matchId, minute, "baron");
+            baronBuffEvents.push({ matchId, minute, taker: "us" });
+          }
+          if (tBaronEnemy > prevEnemyBaron) {
+            baronBuffEvents.push({ matchId, minute, taker: "enemy" });
+          }
+
+          // VOID / ATAKHAN (our side)
+          if (tVoid > prevVoid) {
+            addObjectiveMoment(matchId, minute, "void");
+          }
+          if (tAtak > prevAtakhan) {
+            addObjectiveMoment(matchId, minute, "atakhan");
+          }
+
+          prevTeamDrag = tDragTeam;
+          prevEnemyDrag = tDragEnemy;
+          prevHerald = tHerald;
+          prevTeamBaron = tBaronTeam;
+          prevEnemyBaron = tBaronEnemy;
+          prevVoid = tVoid;
+          prevAtakhan = tAtak;
+        });
+      });
+
+      // Build deduped objective moments list (1 per match+minute)
+      const objectiveEvents = Array.from(objectiveEventMap.entries()).map(([k, type]) => {
+        const parts = k.split("|");
+        return { matchId: parts[0], minute: toNum(parts[1]), type };
+      });
+
+      // 3.5) Presence classifier (on-time vs cross-pressure vs late)
+      // Returns: "onTime" | "crossPressure" | "late"
+      const classifyObjectivePresence = (objType, row) => {
+        const zone = String(row["Zone"] || "").toLowerCase();
+
+        const inRiver = boolTrue(row["In River"]);
+        const inTopSide = boolTrue(row["In Top Side"]);
+        const inBotSide = boolTrue(row["In Bot Side"]);
+        const inMidInner = boolTrue(row["In Mid/Inner"]);
+
+        const inBase = zone.includes("base") || zone.includes("fountain");
+
+        const closeMates = toNum(row["Close Teammates"]);
+        const groupedFlag = boolTrue(row["Is Grouped"]);
+
+        const HARD_GROUP_THRESHOLD = 2;
+        const SOFT_GROUP_THRESHOLD = 1;
+
+        const HARD_GROUPED = groupedFlag || closeMates >= HARD_GROUP_THRESHOLD;
+        const SOFT_GROUPED = groupedFlag || closeMates >= SOFT_GROUP_THRESHOLD;
+
+        const inBotLike = inBotSide || zone.includes("bot");
+        const inTopLike = inTopSide || zone.includes("top");
+        const inMidLike = inMidInner || zone.includes("mid");
+
+        
+
+        // region relative to the objective
+        let region = "neutral";
+        if (objType === "dragon" || objType === "void" || objType === "atakhan" || objType === "elder") {
+          if (inBase) region = "base";
+          else if (inBotLike || inRiver || inMidLike) region = "correct";
+          else if (inTopLike) region = "opposite";
+        } else if (objType === "herald" || objType === "baron") {
+          if (inBase) region = "base";
+          else if (inTopLike || inRiver || inMidLike) region = "correct";
+          else if (inBotLike) region = "opposite";
+        } else {
+          if (inBase) region = "base";
+        }
+
+        if (region === "base") return "late";
+
+        // 1) On-time: correct region + grouped
+        if (region === "correct" && HARD_GROUPED) return "onTime";
+        if (region === "correct" && SOFT_GROUPED && closeMates >= 1) return "onTime";
+
+        // 2) Cross-pressure: opposite side + clearly winning lane + mostly alone
+        if (region === "opposite") {
+          const laneGoldState = toNum(row["Lane Gold State"]);
+          const laneXPState = toNum(row["Lane XP State"]);
+          const laneCSState = toNum(row["Lane CS State"]);
+
+          const goldDiff = toNum(row["Gold Diff vs Opp"]);
+          const xpDiff = toNum(row["XP Diff vs Opp"]);
+          const level = toNum(row["Level"]);
+          const oppLevel = toNum(row["Lane Opponent Level"]);
+          const levelDiff = level - oppLevel;
+
+          const CROSS_MIN_GOLD_DIFF = 800;
+          const CROSS_MIN_XP_LEVEL_DIFF = 1;
+          const CROSS_MIN_XP_RAW_DIFF = 400;
+
+          const bigLead =
+            goldDiff >= CROSS_MIN_GOLD_DIFF ||
+            levelDiff >= CROSS_MIN_XP_LEVEL_DIFF ||
+            xpDiff >= CROSS_MIN_XP_RAW_DIFF ||
+            laneGoldState > 0 ||
+            laneXPState > 0 ||
+            laneCSState > 0;
+
+          const mostlySolo = closeMates <= 1 && !groupedFlag;
+
+          if (bigLead && mostlySolo) return "crossPressure";
+        }
+
+        return "late";
+      };
+
+      // 4) Attendance map: on-time vs cross-pressure vs late when WE take something
+      const attendanceByPlayer = {};
+
+      objectiveEvents.forEach((ev) => {
+        const frames = framesByGame[ev.matchId];
+        if (!frames) return;
+        const frame = frames[ev.minute];
+        if (!frame) return;
+
+        const ourId = ourTeamIdByMatch[ev.matchId] || "200";
+        const teamRows = frame.filter((r) => getTeamId(r) === ourId);
+        if (!teamRows.length) return;
+
+        teamRows.forEach((row) => {
+          const name = playerKey(row);
+          if (!name) return;
+
+          if (!attendanceByPlayer[name]) {
+            attendanceByPlayer[name] = {
+              player: name,
+              events: 0,
+              onTime: 0,
+              crossPressure: 0,
+              late: 0,
+            };
+          }
+
+          attendanceByPlayer[name].events += 1;
+
+          const presence = classifyObjectivePresence(ev.type, row);
+          if (presence === "onTime") attendanceByPlayer[name].onTime += 1;
+          else if (presence === "crossPressure") attendanceByPlayer[name].crossPressure += 1;
+          else attendanceByPlayer[name].late += 1;
+        });
+      });
+
+      // Ensure every player with games in this window appears
+      const allPlayersInWindow = Object.keys(roleViews);
+      allPlayersInWindow.forEach((name) => {
+        if (!attendanceByPlayer[name]) {
+          attendanceByPlayer[name] = {
+            player: name,
+            events: 0,
+            onTime: 0,
+            crossPressure: 0,
+            late: 0,
+          };
+        }
+      });
+
+      const attendanceList = Object.values(attendanceByPlayer).map((a) => {
+        const profile = roleViews[a.player] || null;
+        const primaryRole = profile ? profile.primaryRole : "—";
+        const primaryShare = profile ? profile.primaryShare : null;
+        const flexRoles = profile ? profile.flexRoles : [];
+        const lateRate = a.events ? a.late / a.events : 0;
+        const onTimeRate = a.events ? a.onTime / a.events : 0;
+        const crossPressureRate = a.events ? a.crossPressure / a.events : 0;
+
+        return {
+          ...a,
+          primaryRole,
+          primaryShare,
+          flexRoles,
+          lateRate,
+          onTimeRate,
+          crossPressureRate,
+          gamesInWindow: profile ? profile.games : null,
+        };
+      });
+
+      // sort for presence cards
+      attendanceList.sort((a, b) => {
+        const aHas = a.events > 0;
+        const bHas = b.events > 0;
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        if (!aHas && !bHas) return a.player.localeCompare(b.player);
+        if (b.onTimeRate !== a.onTimeRate) return b.onTimeRate - a.onTimeRate;
+        return (b.events || 0) - (a.events || 0);
+      });
+
+      objectiveAttendance = attendanceList;
+
+      // --- Objective context mini-stats (team-level, all objectives we take) ---
+      const ctx = {
+        events: 0,
+        goldDiffSum: 0,
+        xpDiffSum: 0,
+        teamGroupedSum: 0,
+        enemyGroupedSum: 0,
+        teamWardsPlacedSum: 0,
+        enemyWardsPlacedSum: 0,
+        teamWardsKilledSum: 0,
+        enemyWardsKilledSum: 0,
+      };
+
+      objectiveEvents.forEach((ev) => {
+        const frames = framesByGame[ev.matchId];
+        if (!frames) return;
+        const frame = frames[ev.minute];
+        if (!frame) return;
+
+        const ourId = ourTeamIdByMatch[ev.matchId] || "200";
+        const enemyId = ourId === "200" ? "100" : "200";
+
+        const teamRows = frame.filter((r) => getTeamId(r) === ourId);
+        const enemyRows = frame.filter((r) => getTeamId(r) === enemyId);
+
+        if (!teamRows.length) return;
+
+        const teamRow = teamRows[0];
+        const enemyRow = enemyRows[0] || null;
+
+        const teamGold = toNum(teamRow["Team Gold"]);
+        const enemyGold = enemyRow ? toNum(enemyRow["Team Gold"]) : toNum(teamRow["Enemy Gold"]);
+        const teamXP = toNum(teamRow["Team XP"]);
+        const enemyXP = enemyRow ? toNum(enemyRow["Team XP"]) : toNum(teamRow["Enemy XP"]);
+
+        const goldDiff = teamGold - enemyGold;
+        const xpDiff = teamXP - enemyXP;
+
+        let teamGrouped = 0;
+        let enemyGrouped = 0;
+
+        teamRows.forEach((r) => {
+          const grouped = boolTrue(r["Is Grouped"]) || toNum(r["Close Teammates"]) >= 2;
+          if (grouped) teamGrouped += 1;
+        });
+
+        enemyRows.forEach((r) => {
+          const grouped = boolTrue(r["Is Grouped"]) || toNum(r["Close Teammates"]) >= 2;
+          if (grouped) enemyGrouped += 1;
+        });
+
+        const teamWardsPlaced = toNum(teamRow["Team Wards Placed"]);
+        const enemyWardsPlaced = enemyRow
+          ? toNum(enemyRow["Team Wards Placed"])
+          : toNum(teamRow["Enemy Wards Placed"]);
+        const teamWardsKilled = toNum(teamRow["Team Wards Killed"]);
+        const enemyWardsKilled = enemyRow
+          ? toNum(enemyRow["Team Wards Killed"])
+          : toNum(teamRow["Enemy Wards Killed"]);
+
+        ctx.events += 1;
+        ctx.goldDiffSum += goldDiff;
+        ctx.xpDiffSum += xpDiff;
+        ctx.teamGroupedSum += teamGrouped;
+        ctx.enemyGroupedSum += enemyGrouped;
+        ctx.teamWardsPlacedSum += teamWardsPlaced;
+        ctx.enemyWardsPlacedSum += enemyWardsPlaced;
+        ctx.teamWardsKilledSum += teamWardsKilled;
+        ctx.enemyWardsKilledSum += enemyWardsKilled;
+      });
+
+      if (ctx.events > 0) {
+        objectiveContext = {
+          events: ctx.events,
+          avgGoldDiff: ctx.goldDiffSum / ctx.events,
+          avgXpDiff: ctx.xpDiffSum / ctx.events,
+          avgTeamGrouped: ctx.teamGroupedSum / ctx.events,
+          avgEnemyGrouped: ctx.enemyGroupedSum / ctx.events,
+          avgTeamWardsPlaced: ctx.teamWardsPlacedSum / ctx.events,
+          avgEnemyWardsPlaced: ctx.enemyWardsPlacedSum / ctx.events,
+          avgTeamWardsKilled: ctx.teamWardsKilledSum / ctx.events,
+          avgEnemyWardsKilled: ctx.enemyWardsKilledSum / ctx.events,
+        };
+      }
+
+      // --- Drake-by-drake WR + state + show-up (our 1st–4th drake) ---
+      if (drakeEvents.length) {
+        const makeBucket = (index) => ({
+          index,
+          weGotGames: 0,
+          weGotWins: 0,
+          theyGotGames: 0,
+          theyGotWins: 0,
+          samples: 0,
+          goldOurSum: 0,
+          goldEnemySum: 0,
+          xpOurSum: 0,
+          xpEnemySum: 0,
+          wardsOurSum: 0,
+          wardsEnemySum: 0,
+          clearsOurSum: 0,
+          clearsEnemySum: 0,
+          playerPresence: {}, // name -> { player, events, onTime, late }
+        });
+
+        const drakeBuckets = {
+          1: makeBucket(1),
+          2: makeBucket(2),
+          3: makeBucket(3),
+          4: makeBucket(4),
+        };
+
+        drakeEvents.forEach((ev) => {
+          const idx = ev.taker === "us" ? ev.ourIndex : ev.enemyIndex;
+          if (!idx || idx < 1 || idx > 4) return;
+
+          const bucket = drakeBuckets[idx];
+          const game = games[ev.matchId];
+          if (!game) return;
+          const win = game.result === "Win";
+
+          if (ev.taker === "us") {
+            bucket.weGotGames += 1;
+            if (win) bucket.weGotWins += 1;
+          } else {
+            bucket.theyGotGames += 1;
+            if (win) bucket.theyGotWins += 1;
+          }
+
+          // Only compute state/vision + show-up for OUR drakes
+          if (ev.taker !== "us" || !ev.ourIndex || ev.ourIndex < 1 || ev.ourIndex > 4) return;
+
+          const frames = framesByGame[ev.matchId];
+          if (!frames) return;
+
+          const ourId = ourTeamIdByMatch[ev.matchId] || "200";
+
+          const beforeMinute = Math.max(0, ev.minute - 2);
+          const minuteBefore = getClosestMinuteLE(frames, beforeMinute);
+          const minuteAt = getClosestMinuteLE(frames, ev.minute);
+
+          if (minuteBefore == null || minuteAt == null) return;
+
+          const frameBefore = frames[minuteBefore];
+          const frameAt = frames[minuteAt];
+
+          const teamRowBefore =
+            frameBefore.find((r) => getTeamId(r) === ourId) || frameBefore[0];
+          const teamRowAt =
+            frameAt.find((r) => getTeamId(r) === ourId) || frameAt[0];
+
+          if (!teamRowBefore || !teamRowAt) return;
+
+          const ourGold = toNum(teamRowBefore["Team Gold"]);
+          const enemyGold = toNum(teamRowBefore["Enemy Gold"]);
+          const ourXP = toNum(teamRowBefore["Team XP"]);
+          const enemyXP = toNum(teamRowBefore["Enemy XP"]);
+
+          const ourWardsBefore = toNum(teamRowBefore["Team Wards Placed"]);
+          const enemyWardsBefore = toNum(teamRowBefore["Enemy Wards Placed"]);
+          const ourClearsBefore = toNum(teamRowBefore["Team Wards Killed"]);
+          const enemyClearsBefore = toNum(teamRowBefore["Enemy Wards Killed"]);
+
+          const ourWardsAt = toNum(teamRowAt["Team Wards Placed"]);
+          const enemyWardsAt = toNum(teamRowAt["Enemy Wards Placed"]);
+          const ourClearsAt = toNum(teamRowAt["Team Wards Killed"]);
+          const enemyClearsAt = toNum(teamRowAt["Enemy Wards Killed"]);
+
+          const ourWards2m = Math.max(0, ourWardsAt - ourWardsBefore);
+          const enemyWards2m = Math.max(0, enemyWardsAt - enemyWardsBefore);
+          const ourClears2m = Math.max(0, ourClearsAt - ourClearsBefore);
+          const enemyClears2m = Math.max(0, enemyClearsAt - enemyClearsBefore);
+
+          bucket.samples += 1;
+          bucket.goldOurSum += ourGold;
+          bucket.goldEnemySum += enemyGold;
+          bucket.xpOurSum += ourXP;
+          bucket.xpEnemySum += enemyXP;
+          bucket.wardsOurSum += ourWards2m;
+          bucket.wardsEnemySum += enemyWards2m;
+          bucket.clearsOurSum += ourClears2m;
+          bucket.clearsEnemySum += enemyClears2m;
+
+          const teamRowsAtDrake = frameAt.filter((r) => getTeamId(r) === ourId);
+
+          teamRowsAtDrake.forEach((row) => {
+            const name = playerKey(row);
+            if (!name) return;
+
+            const presence = classifyObjectivePresence("dragon", row);
+            if (!bucket.playerPresence[name]) {
+              bucket.playerPresence[name] = {
+                player: name,
+                events: 0,
+                onTime: 0,
+                late: 0,
+              };
+            }
+
+            const p = bucket.playerPresence[name];
+            p.events += 1;
+            if (presence === "late") p.late += 1;
+            else p.onTime += 1; // onTime + crossPressure = "present"
+          });
+        });
+
+        const buildPresenceSummaryHTML = (bucket) => {
+          const list = Object.values(bucket.playerPresence || {});
+          if (!list.length) return "";
+
+          const withRate = list.map((p) => ({
+            ...p,
+            onTimeRate: p.events ? p.onTime / p.events : 0,
+          }));
+
+          const eligible = withRate.filter((p) => p.events >= 2);
+          if (!eligible.length) return "";
+
+          const leaders = [...eligible]
+            .sort((a, b) => b.onTimeRate - a.onTimeRate)
+            .slice(0, 2);
+          const laggards = [...eligible]
+            .sort((a, b) => a.onTimeRate - b.onTimeRate)
+            .slice(0, 2);
+
+          const fmtList = (arr) =>
+            arr
+              .map(
+                (p) =>
+                  `${p.player} (${Math.round((p.onTimeRate || 0) * 100)}%)`
+              )
+              .join(", ");
+
+          return `
+            <div class="mt-2 text-[0.6rem] text-slate-600">
+              <p class="mb-0.5">
+                <span class="font-semibold text-emerald-700">Most often there:</span>
+                ${leaders.length ? fmtList(leaders) : "—"}
+              </p>
+              <p>
+                <span class="font-semibold text-rose-600">Needs better show-up:</span>
+                ${laggards.length ? fmtList(laggards) : "—"}
+              </p>
+            </div>`;
+        };
+
+        const drakeCardsHTML = [1, 2, 3, 4]
+          .map((idx) => drakeBuckets[idx])
+          .filter(
+            (b) => b && (b.weGotGames > 0 || b.theyGotGames > 0 || b.samples > 0)
+          )
+          .map((b) => {
+            const totalOurTakes = b.weGotGames;
+            const totalEnemyTakes = b.theyGotGames;
+
+            const ourWRWhenWe = totalOurTakes
+              ? (b.weGotWins / totalOurTakes) * 100
+              : null;
+            const ourWRWhenThey = totalEnemyTakes
+              ? (b.theyGotWins / totalEnemyTakes) * 100
+              : null;
+
+            const avgOurGold = b.samples ? b.goldOurSum / b.samples : 0;
+            const avgEnemyGold = b.samples ? b.goldEnemySum / b.samples : 0;
+            const avgOurXP = b.samples ? b.xpOurSum / b.samples : 0;
+            const avgEnemyXP = b.samples ? b.xpEnemySum / b.samples : 0;
+
+            const deltaGold = avgOurGold - avgEnemyGold;
+            const deltaXP = avgOurXP - avgEnemyXP;
+
+            let stateLabel = "You’re usually around even";
+            if (deltaGold > 600 || deltaXP > 600) stateLabel = "You’re usually ahead";
+            else if (deltaGold < -600 || deltaXP < -600) stateLabel = "You’re usually behind";
+
+            const avgOurWards = b.samples ? b.wardsOurSum / b.samples : 0;
+            const avgEnemyWards = b.samples ? b.wardsEnemySum / b.samples : 0;
+            const avgOurClears = b.samples ? b.clearsOurSum / b.samples : 0;
+            const avgEnemyClears = b.samples ? b.clearsEnemySum / b.samples : 0;
+
+            const stateDeltaText = `Δ ${formatSigned(deltaGold, "g")}, ${formatSigned(deltaXP, " XP")}`;
+
+            const headerSampleText = `${totalOurTakes}× we drake${totalEnemyTakes ? `, ${totalEnemyTakes}× they drake` : ""}`;
+
+            const presenceSummaryHTML = buildPresenceSummaryHTML(b);
+
+            return `
+              <div class="rounded-3xl border border-slate-100 bg-slate-50/70 px-3 py-3 flex flex-col justify-between">
+                <div>
+                  <div class="flex items-center justify-between gap-2 mb-1">
+                    <h4 class="text-[0.8rem] font-semibold text-slate-800">
+                      ${ordinal(b.index)} Drake
+                    </h4>
+                    <span class="text-[0.65rem] text-slate-500">${headerSampleText}</span>
+                  </div>
+                  <p class="text-[0.7rem] text-slate-700 mb-1">
+                    ${stateLabel} <span class="text-slate-500">(${stateDeltaText})</span> before this drake.
+                  </p>
+                  <p class="text-[0.65rem] text-slate-600 mb-1.5">
+                    Avg game state (our takes):
+                    <span class="font-semibold">${Math.round(avgOurGold || 0)}g, ${Math.round(avgOurXP || 0)} XP</span>
+                    vs enemy
+                    <span class="font-semibold">${Math.round(avgEnemyGold || 0)}g, ${Math.round(avgEnemyXP || 0)} XP</span>.
+                  </p>
+                  <p class="text-[0.65rem] text-slate-600 mb-1.5">
+                    Your vision (last 2m):
+                    <span class="font-semibold">${avgOurWards.toFixed(1)} wards · ${avgOurClears.toFixed(1)} clears</span>.
+                    Enemy vision (last 2m):
+                    <span class="font-semibold">${avgEnemyWards.toFixed(1)} wards · ${avgEnemyClears.toFixed(1)} clears</span>.
+                  </p>
+                </div>
+
+                <div class="mt-2 grid grid-cols-2 gap-2 text-[0.65rem]">
+                  <div class="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-2 py-1.5">
+                    <div class="font-semibold text-emerald-700 mb-0.5">We got it</div>
+                    ${
+                      ourWRWhenWe != null
+                        ? `<div class="text-slate-800">
+                            WR ${ourWRWhenWe.toFixed(1)}%
+                            <span class="text-slate-500">(${b.weGotWins}/${b.weGotGames})</span>
+                           </div>`
+                        : `<div class="text-slate-500">No samples yet.</div>`
+                    }
+                  </div>
+                  <div class="rounded-2xl border border-rose-100 bg-rose-50/80 px-2 py-1.5">
+                    <div class="font-semibold text-rose-700 mb-0.5">They got it</div>
+                    ${
+                      ourWRWhenThey != null
+                        ? `<div class="text-slate-800">
+                            Our WR ${ourWRWhenThey.toFixed(1)}%
+                            <span class="text-slate-500">(${b.theyGotWins}/${b.theyGotGames})</span>
+                           </div>`
+                        : `<div class="text-slate-500">No samples yet.</div>`
+                    }
+                  </div>
+                </div>
+
+                ${presenceSummaryHTML}
+              </div>`;
+          })
+          .join("");
+
+        if (drakeCardsHTML) {
+          drakeSectionHTML = `
+            <div class="mt-6 pt-4 border-t border-slate-100">
+              <h3 class="text-[0.8rem] font-semibold text-slate-800 mb-1">
+                🐍 Drake-by-Drake Vision (our 1st–4th drake)
+              </h3>
+              <p class="text-[0.65rem] text-slate-600 mb-3 max-w-3xl">
+                For each of <span class="font-semibold">our 1st–4th drakes</span>, we look at the
+                <span class="font-semibold">2 minutes before the take</span> and compare gold / XP state and vision.
+                Mini-cards show your winrate when <span class="font-semibold">you</span> get that drake vs when
+                <span class="font-semibold">the enemy</span> gets their Nth drake, plus who most often shows up on time or tends to be missing.
+              </p>
+              <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+                ${drakeCardsHTML}
+              </div>
+            </div>`;
+        }
+      }
+
+      // --- Elder & Baron Play: 3-minute gold swing after buff ---
+      const buildBuffStats = (events, label, emoji) => {
+        if (!events.length) return null;
+
+        const stats = {
+          us: { events: 0, wins: 0, diffGainSum: 0, ourGainSum: 0, enemyGainSum: 0 },
+                    enemy: { events: 0, wins: 0, diffGainSum: 0, ourGainSum: 0, enemyGainSum: 0 },
+        };
+
+        events.forEach((ev) => {
+          const frames = framesByGame[ev.matchId];
+          if (!frames) return;
+
+          const minuteStart = ev.minute;
+          const minuteEnd = minuteStart + 3;
+
+          const mStart = getMinuteAtOrAfter(frames, minuteStart);
+          const mEnd = getMinuteAtOrAfter(frames, minuteEnd);
+          if (mStart == null || mEnd == null) return;
+
+          const frameStart = frames[mStart];
+          const frameEnd = frames[mEnd];
+          if (!frameStart || !frameEnd) return;
+
+          const ourId = ourTeamIdByMatch[ev.matchId] || "200";
+
+          // Use our team row (so Team Gold / Enemy Gold are consistent)
+          const teamRowStart =
+            frameStart.find((r) => getTeamId(r) === ourId) || frameStart[0];
+          const teamRowEnd =
+            frameEnd.find((r) => getTeamId(r) === ourId) || frameEnd[0];
+
+          if (!teamRowStart || !teamRowEnd) return;
+
+          const ourGoldStart = toNum(teamRowStart["Team Gold"]);
+          const enemyGoldStart = toNum(teamRowStart["Enemy Gold"]);
+          const ourGoldEnd = toNum(teamRowEnd["Team Gold"]);
+          const enemyGoldEnd = toNum(teamRowEnd["Enemy Gold"]);
+
+          const diffStart = ourGoldStart - enemyGoldStart;
+          const diffEnd = ourGoldEnd - enemyGoldEnd;
+
+          const diffGain = diffEnd - diffStart;
+          const ourGain = ourGoldEnd - ourGoldStart;
+          const enemyGain = enemyGoldEnd - enemyGoldStart;
+
+          const bucket = ev.taker === "us" ? stats.us : stats.enemy;
+
+          bucket.events += 1;
+          bucket.diffGainSum += diffGain;
+          bucket.ourGainSum += ourGain;
+          bucket.enemyGainSum += enemyGain;
+
+          const game = games[ev.matchId];
+          if (game && game.result === "Win") {
+            bucket.wins += 1;
+          }
+        });
+
+        if (!stats.us.events && !stats.enemy.events) return null;
+
+        const buildSideCard = (sideKey, title, colorCls, bgCls, borderCls) => {
+          const s = stats[sideKey];
+          if (!s.events) {
+            return `
+              <div class="rounded-2xl border ${borderCls} ${bgCls} px-3 py-2 text-[0.65rem]">
+                <div class="font-semibold ${colorCls} mb-0.5">${title}</div>
+                <div class="text-slate-500">No samples yet.</div>
+              </div>`;
+          }
+
+          const wr = (s.wins / s.events) * 100;
+          const avgDiffGain = s.diffGainSum / s.events;
+          const avgOurGain = s.ourGainSum / s.events;
+          const avgEnemyGain = s.enemyGainSum / s.events;
+
+          return `
+            <div class="rounded-2xl border ${borderCls} ${bgCls} px-3 py-2 text-[0.65rem]">
+              <div class="flex items-center justify-between mb-0.5">
+                <div class="font-semibold ${colorCls}">${title}</div>
+                <span class="text-[0.6rem] text-slate-500">${s.events} plays</span>
+              </div>
+              <p class="mb-0.5 text-slate-800">
+                WR <span class="font-semibold">${wr.toFixed(1)}%</span>
+                <span class="text-slate-500"> (${s.wins}/${s.events})</span>
+              </p>
+              <p class="mb-0.5 text-slate-700">
+                Gold diff swing (3m): <span class="font-semibold">${formatSigned(avgDiffGain, "g")}</span>
+              </p>
+              <p class="mb-0 text-slate-600">
+                Our gain: <span class="font-semibold">${Math.round(avgOurGain)}g</span>
+                · Enemy: <span class="font-semibold">${Math.round(avgEnemyGain)}g</span>
+              </p>
+            </div>`;
+        };
+
+        const usCard = buildSideCard(
+          "us",
+          `${emoji} We had ${label}`,
+          "text-emerald-700",
+          "bg-emerald-50/70",
+          "border-emerald-100"
+        );
+        const enemyCard = buildSideCard(
+          "enemy",
+          `${emoji} They had ${label}`,
+          "text-rose-700",
+          "bg-rose-50/70",
+          "border-rose-100"
+        );
+
+        return `
+          <div class="grid md:grid-cols-2 gap-3">
+            ${usCard}
+            ${enemyCard}
+          </div>`;
+      };
+
+      const elderHTML = elderBuffEvents.length
+        ? buildBuffStats(elderBuffEvents, "Elder", "🐲")
+        : null;
+      const baronHTML = baronBuffEvents.length
+        ? buildBuffStats(baronBuffEvents, "Baron", "🧬")
+        : null;
+
+      if (elderHTML || baronHTML) {
+        elderBaronSectionHTML = `
+          <div class="mt-6 pt-4 border-t border-slate-100">
+            <h3 class="text-[0.8rem] font-semibold text-slate-800 mb-1">
+              🧭 Elder & Baron Play — 3-minute Gold Swing
+            </h3>
+            <p class="text-[0.65rem] text-slate-600 mb-3 max-w-3xl">
+              For each Elder/Baron secured, we measure how much the <span class="font-semibold">gold difference moves</span>
+              over the next <span class="font-semibold">3 minutes</span>. This is a “conversion” check: do buffs turn into leads/wins?
+            </p>
+            <div class="space-y-3">
+              ${elderHTML ? `<div>
+                <h4 class="text-[0.75rem] font-semibold text-slate-700 mb-1">🐲 Elder</h4>
+                ${elderHTML}
+              </div>` : ""}
+              ${baronHTML ? `<div>
+                <h4 class="text-[0.75rem] font-semibold text-slate-700 mb-1">🧬 Baron</h4>
+                ${baronHTML}
+              </div>` : ""}
+            </div>
+          </div>`;
+      }
+
+      // --- Presence mini-cards + late summary ---
+      if (attendanceList.length) {
+        const playersWithData = attendanceList.filter((a) => a.events > 0);
+
+        const avgPlayersOnTime =
+          playersWithData.length > 0
+            ? playersWithData.reduce((sum, a) => sum + (a.onTimeRate || 0), 0) /
+              playersWithData.length
+            : 0;
+
+        const best = playersWithData.length
+          ? [...playersWithData].sort(
+              (a, b) =>
+                b.onTimeRate - a.onTimeRate ||
+                (b.events || 0) - (a.events || 0)
+            )[0]
+          : null;
+
+        const worst = playersWithData.length
+          ? [...playersWithData].sort(
+              (a, b) =>
+                a.onTimeRate - b.onTimeRate ||
+                (b.events || 0) - (a.events || 0)
+            )[0]
+          : null;
+
+        const avgPlayersOnTimePct = (avgPlayersOnTime * 100).toFixed(1);
+        const worstLatePct = worst ? (worst.lateRate * 100).toFixed(1) : "—";
+        const bestLatePct = best ? (best.lateRate * 100).toFixed(1) : "—";
+
+        const makePresenceGrade = (onTimeRate, events) => {
+          if (!events) {
+            return {
+              label: "No data yet",
+              desc: "No detected objective moments in the timeline for this window.",
+              cls: "bg-slate-50 border-slate-200 text-slate-700",
+              pill: "bg-slate-100 text-slate-600",
+            };
+          }
+          if (onTimeRate >= 0.7) {
+            return {
+              label: "Anchor",
+              desc: "Usually grouped and on the right side when objectives are taken.",
+              cls: "bg-emerald-50 border-emerald-200 text-emerald-900",
+              pill: "bg-emerald-100 text-emerald-800",
+            };
+          }
+          if (onTimeRate >= 0.45) {
+            return {
+              label: "Solid helper",
+              desc: "Often there, with some drift or late arrivals.",
+              cls: "bg-amber-50 border-amber-200 text-amber-900",
+              pill: "bg-amber-100 text-amber-800",
+            };
+          }
+          return {
+            label: "Needs sync",
+            desc: "More often late or missing when objectives are taken.",
+            cls: "bg-rose-50 border-rose-200 text-rose-900",
+            pill: "bg-rose-100 text-rose-800",
+          };
+        };
+
+        // ✅ v2.8: taller cards + 2x2 stats layout (cleaner)
+        const makePresenceCardCore = (a) => {
+          const onTimePct = a.events ? (a.onTimeRate * 100).toFixed(1) : "—";
+          const latePct = a.events ? (a.lateRate * 100).toFixed(1) : "—";
+          const crossPct = a.events ? (a.crossPressureRate * 100).toFixed(1) : "—";
+
+          const primaryRoleLabel = a.primaryRole || "—";
+          const primaryShareLabel =
+            a.primaryShare != null ? `${(a.primaryShare * 100).toFixed(0)}%` : "—";
+
+          const grade = makePresenceGrade(a.onTimeRate, a.events);
+          const lowSample = a.events > 0 && a.events < 3;
+
+          return `
+            <div class="rounded-2xl border ${grade.cls} px-3 py-2.5 text-[0.65rem] ${lowSample ? "opacity-80" : ""}">
+              <div class="flex items-center justify-between gap-2 mb-1">
+                <div class="font-semibold text-[0.72rem] truncate">${a.player}</div>
+                <span class="px-2 py-0.5 rounded-full text-[0.6rem] font-semibold ${grade.pill}">
+                  ${grade.label}
+                </span>
+              </div>
+
+              <div class="flex items-center justify-between mb-2">
+                <span class="uppercase tracking-wide text-[0.6rem] opacity-80">${primaryRoleLabel}</span>
+                <span class="text-[0.6rem] opacity-80">% in role: <strong>${primaryShareLabel}</strong></span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2 mb-2">
+                <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                  <div class="text-[0.58rem] opacity-60">Obj. seen</div>
+                  <div class="font-semibold text-[0.75rem]">${a.events}</div>
+                </div>
+                <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                  <div class="text-[0.58rem] opacity-60">On time</div>
+                  <div class="font-semibold text-[0.75rem]">${onTimePct}%</div>
+                </div>
+                <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                  <div class="text-[0.58rem] opacity-60">X-pressure</div>
+                  <div class="font-semibold text-[0.75rem]">${crossPct}%</div>
+                </div>
+                <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                  <div class="text-[0.58rem] opacity-60">Late</div>
+                  <div class="font-semibold text-[0.75rem]">${latePct}%</div>
+                </div>
+              </div>
+
+              <p class="text-[0.6rem] leading-snug opacity-90">
+                ${grade.desc}
+                ${lowSample ? `<span class="ml-1 opacity-80">· low sample</span>` : ""}
+              </p>
+            </div>`;
+        };
+
+        const coreCardsHTML = attendanceList.map(makePresenceCardCore).join("");
+
+        const flexRows = [];
+        attendanceList.forEach((a) => {
+          if (!a.flexRoles || !a.flexRoles.length) return;
+          a.flexRoles.forEach((fr) => {
+            flexRows.push({
+              player: a.player,
+              flexRole: fr.role,
+              share: fr.share,
+              onTimeRate: a.onTimeRate,
+              crossPressureRate: a.crossPressureRate,
+              lateRate: a.lateRate,
+              events: a.events,
+            });
+          });
+        });
+
+        flexRows.sort((a, b) => {
+          const aHas = a.events > 0;
+          const bHas = b.events > 0;
+          if (aHas !== bHas) return aHas ? -1 : 1;
+          if (!aHas && !bHas) return a.player.localeCompare(b.player);
+          if (b.onTimeRate !== a.onTimeRate) return b.onTimeRate - a.onTimeRate;
+          return (b.events || 0) - (a.events || 0);
+        });
+
+        const flexCardsHTML =
+          flexRows.length > 0
+            ? flexRows
+                .map((fr) => {
+                  const onTimePct = fr.events ? (fr.onTimeRate * 100).toFixed(1) : "—";
+                  const latePct = fr.events ? (fr.lateRate * 100).toFixed(1) : "—";
+                  const crossPct = fr.events ? (fr.crossPressureRate * 100).toFixed(1) : "—";
+                  const shareLabel = `${(fr.share * 100).toFixed(0)}%`;
+                  const grade = makePresenceGrade(fr.onTimeRate, fr.events);
+                  const lowSample = fr.events > 0 && fr.events < 3;
+
+                  return `
+                    <div class="rounded-2xl border ${grade.cls} px-3 py-2.5 text-[0.65rem] ${lowSample ? "opacity-80" : ""}">
+                      <div class="flex items-center justify-between gap-2 mb-1">
+                        <div class="font-semibold text-[0.72rem] truncate">${fr.player}</div>
+                        <span class="px-2 py-0.5 rounded-full text-[0.6rem] font-semibold ${grade.pill}">
+                          ${grade.label}
+                        </span>
+                      </div>
+
+                      <div class="flex items-center justify-between mb-2">
+                        <span class="uppercase tracking-wide text-[0.6rem] opacity-80">Flex: ${fr.flexRole}</span>
+                        <span class="text-[0.6rem] opacity-80">Share: <strong>${shareLabel}</strong></span>
+                      </div>
+
+                      <div class="grid grid-cols-2 gap-2 mb-2">
+                        <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                          <div class="text-[0.58rem] opacity-60">Obj. seen</div>
+                          <div class="font-semibold text-[0.75rem]">${fr.events}</div>
+                        </div>
+                        <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                          <div class="text-[0.58rem] opacity-60">On time</div>
+                          <div class="font-semibold text-[0.75rem]">${onTimePct}%</div>
+                        </div>
+                        <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                          <div class="text-[0.58rem] opacity-60">X-pressure</div>
+                          <div class="font-semibold text-[0.75rem]">${crossPct}%</div>
+                        </div>
+                        <div class="rounded-xl bg-white/60 border border-black/5 px-2 py-1.5">
+                          <div class="text-[0.58rem] opacity-60">Late</div>
+                          <div class="font-semibold text-[0.75rem]">${latePct}%</div>
+                        </div>
+                      </div>
+
+                      <p class="text-[0.6rem] leading-snug opacity-90">
+                        ${grade.desc}
+                        ${lowSample ? `<span class="ml-1 opacity-80">· low sample</span>` : ""}
+                      </p>
+                    </div>`;
+                })
+                .join("")
+            : `<div class="text-[0.65rem] text-slate-500 px-1 py-2">No flex roles with ≥10% games in this window.</div>`;
+
+        // ✅ v2.8 UI: no horizontal scroll; responsive grid + right column has TWO mini cards stacked
+        lateSummaryHTML = `
+          <div class="mt-6 pt-4 border-t border-slate-100">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <h3 class="text-[0.8rem] font-semibold text-slate-700">
+                🕒 Objective Presence — Core vs Flex Roles
+              </h3>
+              <div class="inline-flex items-center gap-1 bg-slate-100 rounded-full px-1 py-0.5">
+                <button
+                  class="px-2 py-0.5 rounded-full text-[0.65rem] font-medium bg-slate-800 text-white"
+                  data-role-view="core"
+                >
+                  Core Roles
+                </button>
+                <button
+                  class="px-2 py-0.5 rounded-full text-[0.65rem] font-medium text-slate-600 hover:text-slate-800"
+                  data-role-view="flex"
+                >
+                  Flex Roles
+                </button>
+              </div>
+            </div>
+
+            <p class="text-[0.65rem] text-slate-600 mb-3 max-w-3xl">
+              Timeline-based: we mark players <span class="font-semibold">on time</span> when they’re grouped on the correct side
+              at the minute your team secures an objective. If they’re on the opposite side, mostly alone, and clearly winning
+              lane (gold/xp/level), they count as <span class="font-semibold">cross-pressure</span> instead of late.
+              We now dedupe to <span class="font-semibold">one objective moment per match+minute</span> and infer
+              <span class="font-semibold">our TeamId per match</span> (no hard-coded 200).
+            </p>
+
+            <div class="grid lg:grid-cols-[1fr_320px] gap-4 items-start">
+              <div>
+                <div data-role-panel="core">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
+                    ${coreCardsHTML}
+                  </div>
+                </div>
+
+                <div data-role-panel="flex" class="hidden">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
+                    ${flexCardsHTML}
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div class="rounded-2xl bg-slate-50 border border-slate-200 px-3 py-2 text-[0.65rem] text-slate-700">
+                  <p class="mb-1">
+                    <span class="font-semibold text-slate-800">Big picture:</span>
+                    average on-time rate is about <span class="font-semibold">${avgPlayersOnTimePct}%</span>.
+                  </p>
+                  ${
+                    best && worst
+                      ? `
+                    <p class="mb-1">
+                      <span class="font-semibold text-slate-800">Most often late:</span>
+                      <span class="text-rose-600 font-semibold">${worst.player}</span>
+                      (${worstLatePct}% late across ${worst.events} objectives).
+                    </p>
+                    <p class="mb-0">
+                      <span class="font-semibold text-slate-800">Most reliable show-up:</span>
+                      <span class="text-emerald-700 font-semibold">${best.player}</span>
+                      (${bestLatePct}% late across ${best.events} objectives).
+                    </p>`
+                      : `<p class="mb-0">Not enough objective moments yet to call out best/worst reliably.</p>`
+                  }
+                </div>
+
+                <div class="rounded-2xl bg-white border border-slate-200 px-3 py-2 text-[0.65rem] text-slate-700">
+                  <div class="font-semibold text-slate-800 mb-1">How the scoring works</div>
+                  <p class="mb-1 text-[0.62rem] text-slate-600 leading-snug">
+                    <span class="font-semibold">On time</span> = correct side + grouped (close teammates / grouped flag).
+                    <br/>
+                    <span class="font-semibold">X-pressure</span> = opposite side + mostly solo + clearly winning lane.
+                    <br/>
+                    <span class="font-semibold">Late</span> = everything else (including base).
+                  </p>
+                  <p class="mb-0 text-[0.6rem] text-slate-500">
+                    Colors: <span class="font-semibold text-emerald-700">green</span> anchor,
+                    <span class="font-semibold text-amber-700">amber</span> mixed,
+                    <span class="font-semibold text-rose-700">red</span> needs sync.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>`;
+      } else {
+        lateSummaryHTML = `
+          <div class="mt-4 pt-3 border-t border-slate-100 text-[0.65rem] text-slate-500">
+            Timeline data is available but no clear team objective moments were detected for this window.
+            Once you secure more Dragons / Heralds / Barons / Grubs / Atakhans, this section will populate.
+          </div>`;
+      }
+    } else {
+      lateSummaryHTML = `
+        <div class="mt-4 pt-3 border-t border-slate-100 text-[0.65rem] text-slate-500">
+          No timeline rows match the games in this window. Check that your timeline sheet uses the same
+          <span class="font-mono">Match ID</span> values as the main stats sheet.
+        </div>`;
+    }
+  } else {
+    lateSummaryHTML = `
+      <div class="mt-4 pt-3 border-t border-slate-100 text-[0.65rem] text-slate-500">
+        Timeline sheet not provided — once wired in, this section will show objective presence + cross-pressure.
+      </div>`;
   }
 
-  // --- Compute scores ---
-  const players = Object.entries(playerScores).map(([n, s]) => {
-    const avg = {}; metrics.forEach((m) => (avg[m] = s[m] / (s.count || 1)));
-    const weighted =
-      0.3 * (normalize(avg.kda, allVals.kda) + normalize(avg.teamDmg, allVals.teamDmg) + normalize(avg.mvpAce, allVals.mvpAce)) +
-      0.2 * (normalize(avg.objImpact, allVals.objImpact) + normalize(avg.objControl, allVals.objControl) + normalize(avg.objConvert, allVals.objConvert)) +
-      0.15 * (normalize(avg.vision, allVals.vision) + normalize(avg.visAdv, allVals.visAdv) + normalize(avg.visDeny, allVals.visDeny)) +
-      0.15 * (normalize(avg.tempo, allVals.tempo) + normalize(avg.macro, allVals.macro) + normalize(avg.goldMom, allVals.goldMom)) +
-      0.1 * (normalize(avg.synergy, allVals.synergy) + normalize(avg.shared, allVals.shared) + normalize(avg.teamCoord, allVals.teamCoord)) +
-      0.1 * (normalize(avg.mech, allVals.mech) + normalize(avg.tactical, allVals.tactical));
-    return { name: n, avg: (weighted / 11) * 100, games: s.games.size, role: primaryRoles[n] || "FLEX", metrics: avg };
-  });
+  // --- Trend buttons (aligned with Synergy & TPI) ---
+  const trendButtons = `
+    <div class="flex items-center gap-1 bg-sky-50 px-1 py-1 rounded-full shadow-inner">
+      ${[
+        { key: "5", label: "Last 5" },
+        { key: "10", label: "Last 10" },
+        { key: "split", label: "Current Split" },
+        { key: "season", label: "Season" },
+      ]
+        .map(
+          ({ key, label }) => `
+        <button
+          class="px-3 py-1 rounded-full text-[0.7rem] font-medium transition
+          ${
+            objectivesTrendWindow === key
+              ? "bg-sky-500 text-white shadow-sm"
+              : "bg-transparent text-sky-700 hover:bg-white hover:text-sky-600"
+          }"
+          data-objectives-window="${key}">
+          ${label}
+        </button>`
+        )
+        .join("")}
+    </div>`;
 
-  const totalGames = [...new Set(filtered.map((r) => r["Game #"]))].length || 1;
-  const lastHistory = JSON.parse(localStorage.getItem("performanceImpactHistory") || "{}") || {};
+  // --- Objective type buttons (Small vs Big) ---
+  const objectiveTypeButtons = `
+    <div class="flex items-center gap-1 bg-slate-50 px-1 py-1 rounded-full">
+      ${[
+        { key: "small", label: "Small Firsts" },
+        { key: "big", label: "Big Objectives" },
+      ]
+        .map(
+          ({ key, label }) => `
+        <button
+          class="px-3 py-1 rounded-full text-[0.65rem] font-medium transition
+          ${
+            objectivesObjectiveGroup === key
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-transparent text-slate-700 hover:bg-white hover:text-slate-900"
+          }"
+          data-objectives-type="${key}">
+          ${label}
+        </button>`
+        )
+        .join("")}
+    </div>`;
 
-  const ranked = players.map((p) => {
-    const isGuest = p.games / totalGames < 0.1;
-    const prev = lastHistory[p.name]?.avg ?? null;
-    const delta = prev !== null ? p.avg - prev : null;
-    return { ...p, isGuest, delta };
-  }).sort((a, b) => {
-    if (a.isGuest !== b.isGuest) return a.isGuest ? 1 : -1;
-    return b.avg - a.avg;
-  });
-
-  // Save snapshot
-  const snap = {}; ranked.forEach((p) => (snap[p.name] = { avg: p.avg }));
-  localStorage.setItem("performanceImpactHistory", JSON.stringify(snap));
-
-  // --- Focus & Strength analyzer ---
-  const findAreas = (p, allVals, prevSnap = {}) => {
-    const m = p.metrics;
-    const tips = { macro: [], vision: [], synergy: [], mechanics: [] };
-    const strengths = { macro: [], vision: [], synergy: [], mechanics: [] };
-    let severity = 0;
-
-    const ratio = (field) => {
-      const val = m[field] ?? 0;
-      const avg = allVals[field]?.reduce((a, b) => a + b, 0) / (allVals[field]?.length || 1);
-      return { ratio: avg ? val / avg : 1, val, avg };
-    };
-    const assess = (f, cat, weak, strong, label) => {
-      const { ratio: r, val, avg } = ratio(f);
-      const t = `${label}: ${val.toFixed(1)} vs ${avg.toFixed(1)} avg (${(r * 100).toFixed(0)}%)`;
-      if (r < 0.75) { severity += 2; tips[cat].push(`<span title="${t}">${weak}</span>`); }
-      else if (r < 0.9) { severity += 1; tips[cat].push(`<span title="${t}">${weak}</span>`); }
-      else if (r > 1.15) strengths[cat].push(`<span title="${t}">${strong}</span>`);
-    };
-
-    assess("objConvert","macro","Improve converting fights into objectives.","Great objective conversion.","Objective Conversion Rate");
-    assess("objControl","macro","Refine control over major objectives.","Excellent objective awareness.","Objective Control Balance");
-    assess("tempo","macro","Slow tempo — capitalize faster.","Efficient tempo control.","Tempo Efficiency Index");
-    assess("macro","macro","Macro play inconsistent — refine rotations.","Strong macro consistency.","Macro Consistency");
-    assess("visAdv","vision","Enhance ward control — vision gap detected.","Strong vision control.","Vision Advantage");
-    assess("visDeny","vision","Improve vision denial — clear more wards.","Efficient vision denial.","Vision Denial Efficiency");
-    assess("synergy","synergy","Low synergy — improve team coordination.","Excellent teamwork and synergy.","Synergy Index");
-    assess("shared","synergy","Increase shared participation rate.","High team participation.","Shared Participation Rate");
-    assess("mech","mechanics","Refine execution under pressure.","High mechanical skill.","Mechanical Impact");
-    assess("tactical","mechanics","Improve tactical decision-making.","Smart tactical decisions.","Tactical Intelligence");
-
-    let emoji="🟢", color="bg-green-50 text-green-700";
-    if(severity>=4&&severity<7){emoji="🟡";color="bg-yellow-50 text-yellow-700";}
-    else if(severity>=7){emoji="🔴";color="bg-red-50 text-red-700";}
-
-    const tipsHTML=Object.entries(tips).filter(([_,a])=>a.length)
-      .map(([c,a])=>`<p><strong>${c[0].toUpperCase()+c.slice(1)}:</strong> ${a.join(" ")}</p>`).join("")||"<p>Balanced overall performance.</p>";
-    const strengthsHTML=Object.entries(strengths).filter(([_,a])=>a.length)
-      .map(([c,a])=>`<p><strong>${c[0].toUpperCase()+c.slice(1)}:</strong> ${a.join(" ")}</p>`).join("")||"<p>—</p>";
-
-    const prev=prevSnap[p.name]?.avg??null;
-    let trend="→ stable"; if(prev!==null){if(p.avg-prev>0.8)trend="↑ improving";else if(p.avg-prev<-0.8)trend="↓ declining";}
-    return {emoji,color,tipsHTML,strengthsHTML,severity,trend};
+  // --- Build First-Hit cards (main stats) ---
+  const makeTone = (delta) => {
+    if (delta > 8) return { cls: "text-emerald-600", badge: "Most decisive" };
+    if (delta > 4) return { cls: "text-sky-600", badge: "Strong lever" };
+    if (delta >= 0) return { cls: "text-gray-700", badge: "Positive edge" };
+    return { cls: "text-red-600", badge: "Risk if lost" };
   };
 
-  const sortedRanked=[...ranked].sort((a,b)=>findAreas(b,allVals,lastHistory).severity-findAreas(a,allVals,lastHistory).severity);
+  const cardsHTML =
+    impactsActive.length > 0
+      ? impactsActive
+          .map((o) => {
+            const tone = makeTone(o.delta);
+            const lowSample =
+              o.weFirstGames + o.theyFirstGames < 6 ? " (low sample)" : "";
+            const sampleNote =
+              o.weFirstGames && o.theyFirstGames
+                ? `${o.weFirstGames}× we-first, ${o.theyFirstGames}× enemy-first`
+                : `${o.total} games with a clear first owner`;
 
-  const focusHTML=sortedRanked.map(p=>{
-    const f=findAreas(p,allVals,lastHistory);
-    const low=p.isGuest||p.games<3;
-    const warn=low?`<span title="⚠️ Limited data — trends may be inaccurate." class="ml-1 text-orange-500">⚠️</span>`:"";
-    return `<div class="${f.color} p-3 rounded-lg transition hover:shadow-sm ${low?"opacity-80":""}">
-      <p class="font-semibold">${f.emoji} ${p.name}<span class="text-xs text-gray-500">
-        (${p.role}${p.isGuest?", ⭐ Guest":""}, ${f.trend})</span>${warn}</p>
-      <div class="text-sm mt-1 leading-snug">${f.tipsHTML}</div></div>`;
-  }).join("");
+            return `
+          <div class="p-3 rounded-2xl bg-white border border-gray-100 shadow-[0_1px_4px_rgba(15,23,42,0.04)] flex flex-col justify-between text-[0.7rem]">
+            <div>
+              <div class="flex items-baseline justify-between mb-1">
+                <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  ${tone.badge}
+                </div>
+                <div class="text-[0.6rem] text-gray-400">${sampleNote}</div>
+              </div>
+              <div class="text-sm font-semibold text-gray-900 mb-2">
+                ${o.label}
+              </div>
 
-  const strengthHTML=ranked.map(p=>{
-    const f=findAreas(p,allVals,lastHistory);
-    const low=p.isGuest||p.games<3;
-    const warn=low?`<span title="⚠️ Limited data — trends may be inaccurate." class="ml-1 text-orange-500">⚠️</span>`:"";
-    return `<div class="bg-emerald-50 text-emerald-700 p-3 rounded-lg transition hover:shadow-sm ${low?"opacity-80":""}">
-      <p class="font-semibold">🟢 ${p.name}<span class="text-xs text-gray-500">
-        (${p.role}${p.isGuest?", ⭐ Guest":""}, ${f.trend})</span>${warn}</p>
-      <div class="text-sm mt-1 leading-snug">${f.strengthsHTML}</div></div>`;
-  }).join("");
+              <div class="grid grid-cols-2 gap-2">
+                <div class="rounded-xl bg-emerald-50/80 border border-emerald-100 px-2 py-1.5">
+                  <div class="font-semibold text-emerald-700 text-[0.7rem] mb-0.5">We got it first</div>
+                  <div class="text-gray-800">
+                    WR ${o.wrWeFirst.toFixed(1)}%
+                    <span class="text-gray-500">(${o.weFirstGames} g)</span>
+                  </div>
+                  <div class="text-[0.6rem] text-gray-500">
+                    Loss rate ${(100 - o.wrWeFirst).toFixed(1)}%
+                  </div>
+                </div>
+                <div class="rounded-xl bg-rose-50/80 border border-rose-100 px-2 py-1.5">
+                  <div class="font-semibold text-rose-700 text-[0.7rem] mb-0.5">They got it first</div>
+                  <div class="text-gray-800">
+                    Our WR ${o.wrTheyFirst.toFixed(1)}%
+                    <span class="text-gray-500">(${o.theyFirstGames} g)</span>
+                  </div>
+                  <div class="text-[0.6rem] text-gray-500">
+                    Loss rate ${(100 - o.wrTheyFirst).toFixed(1)}%
+                  </div>
+                </div>
+              </div>
+            </div>
 
-  // --- HTML Template (Updated Style) ---
-  const html = `
+            <div class="mt-2">
+              <span class="${tone.cls} text-[0.85rem] font-semibold">
+                ${o.delta >= 0 ? "+" : ""}${o.delta.toFixed(1)}pp
+              </span>
+              <span class="text-[0.6rem] text-gray-500 ml-1">
+                WR diff (we-first vs enemy-first)${lowSample}
+              </span>
+            </div>
+          </div>`;
+          })
+          .join("")
+      : `
+        <div class="p-4 rounded-2xl bg-gray-50 border border-dashed border-gray-200 text-[0.7rem] text-gray-500">
+          Not enough First Blood / First Dragon / Atakhan / Void Grub events in this window
+          to build a reliable objective profile.
+        </div>`;
+
+  const summaryText =
+    impactsActive.length > 0
+      ? (() => {
+          const sorted = [...impactsActive].sort((a, b) => (b.delta || 0) - (a.delta || 0));
+          const top = sorted[0];
+          const worst = sorted[sorted.length - 1];
+
+          const topName = top ? top.label.replace(/^.+?\s/, "") : null;
+          const worstName = worst ? worst.label.replace(/^.+?\s/, "") : null;
+
+          return `
+            <p class="text-[0.65rem] text-gray-600">
+              In this window/tab, <span class="font-semibold">${topName || "—"}</span> is your strongest leverage first objective,
+              while <span class="font-semibold">${worstName || "—"}</span> punishes hardest when lost.
+            </p>`;
+        })()
+      : `<p class="text-[0.65rem] text-gray-500">Once more games are played, this card will show which first objectives actually move your winrate.</p>`;
+
+  // --- Objective context mini-cards (risk / grouping / vision) ---
+  let contextCardsHTML = "";
+  if (objectiveContext && objectiveContext.events > 0) {
+    const oc = objectiveContext;
+
+    const riskLabel =
+      oc.avgGoldDiff > 500
+        ? "You usually fight from ahead."
+        : oc.avgGoldDiff < -500
+        ? "You flip a lot from behind."
+        : "Many objectives are taken close to even.";
+
+    const groupedLabel =
+      oc.avgTeamGrouped >= 4
+        ? "You group well before objectives."
+        : oc.avgTeamGrouped <= 3
+        ? "Often starting with only 2–3 grouped."
+        : "Medium grouping discipline.";
+
+    const visionLabel =
+      oc.avgTeamWardsPlaced > oc.avgEnemyWardsPlaced &&
+      oc.avgTeamWardsKilled >= oc.avgEnemyWardsKilled
+        ? "You often have vision advantage."
+        : oc.avgTeamWardsPlaced < oc.avgEnemyWardsPlaced
+        ? "Enemy usually out-wards you."
+        : "Vision battle is roughly even.";
+
+    contextCardsHTML = `
+      <div class="mt-4 grid md:grid-cols-3 gap-3">
+        <div class="rounded-2xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-[0.65rem] text-slate-800">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-amber-800">Risk Profile at Objectives</span>
+            <span class="text-[0.6rem] text-amber-700">Sample: ${oc.events}</span>
+          </div>
+          <p class="mb-0.5">Avg Gold Diff at take: <span class="font-semibold">${oc.avgGoldDiff.toFixed(0)}</span></p>
+          <p class="mb-0.5">Avg XP Diff at take: <span class="font-semibold">${oc.avgXpDiff.toFixed(0)}</span></p>
+          <p class="text-[0.62rem] text-amber-900 mt-1">${riskLabel}</p>
+        </div>
+
+        <div class="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-[0.65rem] text-slate-800">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-indigo-800">Grouping Discipline</span>
+            <span class="text-[0.6rem] text-indigo-700">Team vs Enemy</span>
+          </div>
+          <p class="mb-0.5">Avg grouped (you): <span class="font-semibold">${oc.avgTeamGrouped.toFixed(1)}</span></p>
+          <p class="mb-0.5">Avg grouped (enemy): <span class="font-semibold">${oc.avgEnemyGrouped.toFixed(1)}</span></p>
+          <p class="text-[0.62rem] text-indigo-900 mt-1">${groupedLabel}</p>
+        </div>
+
+        <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-[0.65rem] text-slate-800">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-semibold text-emerald-800">Vision Around Objectives</span>
+            <span class="text-[0.6rem] text-emerald-700">Per take</span>
+          </div>
+          <p class="mb-0.5">
+            Your wards: <span class="font-semibold">${oc.avgTeamWardsPlaced.toFixed(1)}</span>
+            · Enemy: <span class="font-semibold">${oc.avgEnemyWardsPlaced.toFixed(1)}</span>
+          </p>
+          <p class="mb-0.5">
+            Your clears: <span class="font-semibold">${oc.avgTeamWardsKilled.toFixed(1)}</span>
+            · Enemy: <span class="font-semibold">${oc.avgEnemyWardsKilled.toFixed(1)}</span>
+          </p>
+          <p class="text-[0.62rem] text-emerald-900 mt-1">${visionLabel}</p>
+        </div>
+      </div>`;
+  }
+
+  const howToReadBoxHTML = `
+    <div class="mt-3">
+      <details class="group rounded-2xl border border-slate-100 bg-slate-50/60 px-3 py-2 text-[0.6rem] text-gray-600">
+        <summary class="flex items-center justify-between cursor-pointer">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center justify-center w-5 h-5 rounded-full border border-slate-300 text-[0.65rem] text-slate-600 group-open:bg-slate-800 group-open:text-white">?</span>
+            <span class="font-semibold text-slate-700">How to read this card</span>
+          </div>
+          <span class="text-[0.6rem] text-slate-400 group-open:hidden">Show details</span>
+          <span class="text-[0.6rem] text-slate-400 hidden group-open:inline">Hide details</span>
+        </summary>
+        <div class="mt-2 leading-snug space-y-1">
+          <p><strong>Impact cards:</strong> winrate when you secure that objective first vs when the enemy does.</p>
+          <p><strong>Drake row:</strong> breaks out our 1st–4th drake separately (state + vision + attendance).</p>
+          <p><strong>Elder/Baron play:</strong> checks if buffs convert into a 3-minute gold diff swing.</p>
+          <p><strong>Presence:</strong> on-time vs cross-pressure vs late at the minute we secure objectives.</p>
+        </div>
+      </details>
+    </div>`;
+
+  // --- Render card ---
+  container.innerHTML = `
     <section class="section-wrapper fade-in mb-10">
-      <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 text-center">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between px-5 pt-5 mb-3">
-          <h2 class="text-[1.1rem] font-semibold text-orange-500 tracking-tight">Performance Impact</h2>
-          <div class="flex gap-1 text-xs font-medium">
-            <button id="setWindow5" class="px-2.5 py-1 rounded-md border transition 
-              ${trendWindow==="5" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"}">
-              5 Games
-            </button>
-            <button id="setWindow10" class="px-2.5 py-1 rounded-md border transition 
-              ${trendWindow==="10" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"}">
-              10 Games
-            </button>
-            <button id="setCurrentSplit" class="px-2.5 py-1 rounded-md border transition 
-              ${trendWindow==="currentSplit" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"}">
-              Current Split (${currentSplit})
-            </button>
-            <button id="setSeason" class="px-2.5 py-1 rounded-md border transition 
-              ${trendWindow==="season" ? "bg-orange-500 text-white border-orange-500" : "bg-white text-gray-700 border-gray-200 hover:border-orange-300 hover:text-orange-500"}">
-              Season ${currentSeason}
-            </button>
+      <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-1">
+          <div>
+            <h2 class="text-[1.1rem] font-semibold text-sky-500 tracking-tight">
+              Objectives — First Hit Impact & Plays
+            </h2>
+            <p class="text-[0.7rem] text-gray-600 max-w-xl">
+              Winrate impact for “first” objectives, plus timeline-based presence, drake order, and buff conversion.
+            </p>
+            <p class="text-[0.6rem] text-gray-500">
+              Window:
+              <span class="font-semibold">
+                ${
+                  objectivesTrendWindow === "season"
+                    ? currentSeason ? `Season ${currentSeason}` : "Season"
+                    : objectivesTrendWindow === "split"
+                    ? currentSplit != null ? `Current Split (${currentSplit})` : "Current Split"
+                    : "Last " + objectivesTrendWindow + " games"
+                }
+              </span>
+              · Games: <span class="font-semibold text-gray-800">${totalGames}</span>
+              · Objective games (tab): <span class="font-semibold text-gray-800">${totalObjectivesGamesActive}</span>
+              · Objective games (all): <span class="font-semibold text-gray-800">${totalObjectivesGames}</span>
+            </p>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            ${trendButtons}
+            ${objectiveTypeButtons}
           </div>
         </div>
 
-        <div id="performance-content" class="p-6 text-center fade-section">
-          <p class="text-sm text-gray-600 mb-4">
-            Games analyzed: ${totalGames} (${trendWindow==="season"?"Season "+currentSeason:trendWindow==="currentSplit"?"Current Split ("+currentSplit+")":"Last "+trendWindow+" Games"})
-          </p>
-
-          <table class="min-w-full text-sm border-t border-gray-200 mb-6">
-            <thead class="text-gray-700 font-semibold border-b">
-              <tr>
-                <th class="text-left py-1 w-8">#</th>
-                <th class="text-left py-1">Player</th>
-                <th class="text-right py-1">Score</th>
-                <th class="text-right py-1">Games</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${ranked.map((p,i)=>{
-                const g=p.isGuest?'<span title="Guest Player" class="ml-1 text-yellow-500">⭐</span>':'';
-                const d=p.delta===null?"":p.delta>0.5?`<span class="text-green-600 text-xs ml-1">▲ +${p.delta.toFixed(1)}</span>`:
-                  p.delta<-0.5?`<span class="text-red-600 text-xs ml-1">▼ ${p.delta.toFixed(1)}</span>`:`<span class="text-gray-400 text-xs ml-1">•</span>`;
-                return `<tr class="${p.isGuest?"opacity-75":""} ${i%2===0?"bg-gray-50":"bg-white"} hover:bg-orange-50">
-                  <td class="py-1">${p.isGuest?"—":i+1}</td>
-                  <td class="py-1 font-medium">${p.name}<span class="text-xs text-gray-500">(${p.role})</span>${g}</td>
-                  <td class="py-1 text-right">${p.avg.toFixed(1)}${d}</td>
-                  <td class="py-1 text-right">${p.games}</td></tr>`;}).join("")}
-            </tbody>
-          </table>
-
-          <button id="tips-header" class="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-orange-500 transition">
-            Focus Areas <span id="tips-icon" class="transition-transform">▼</span>
-          </button>
-          <div id="tips-box" class="grid sm:grid-cols-2 gap-3 mt-3 text-left">${focusHTML}</div>
-
-          <button id="strengths-header" class="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-emerald-600 mt-6 transition">
-            Strength Highlights <span id="strengths-icon" class="transition-transform">▼</span>
-          </button>
-          <div id="strengths-box" class="grid sm:grid-cols-2 gap-3 mt-3 text-left">${strengthHTML}</div>
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+          ${cardsHTML}
         </div>
+
+        <div class="mt-3">${summaryText}</div>
+
+        ${howToReadBoxHTML}
+        ${contextCardsHTML}
+        ${drakeSectionHTML}
+        ${elderBaronSectionHTML}
+        ${lateSummaryHTML}
       </div>
-    </section>`;
+    </section>
+  `;
 
-  document.getElementById("performance-impact").innerHTML = html;
-
-  // --- Buttons ---
-  document.getElementById("setWindow5").onclick = () => { localStorage.setItem("trendWindowPerfImpact", "5"); renderPerformanceImpact(data); };
-  document.getElementById("setWindow10").onclick = () => { localStorage.setItem("trendWindowPerfImpact", "10"); renderPerformanceImpact(data); };
-  document.getElementById("setCurrentSplit").onclick = () => { localStorage.setItem("trendWindowPerfImpact", "currentSplit"); renderPerformanceImpact(data); };
-  document.getElementById("setSeason").onclick = () => { localStorage.setItem("trendWindowPerfImpact", "season"); renderPerformanceImpact(data); };
-
-  // --- Collapsibles ---
-  const setup = (hid, bid, iid) => {
-    const h = document.getElementById(hid), b = document.getElementById(bid), ic = document.getElementById(iid);
-    if (!h || !b || !ic) return;
-    let o = true; b.style.overflow = "hidden";
-    b.style.transition = "max-height 0.35s ease,padding 0.3s ease,opacity 0.3s ease";
-    b.style.maxHeight = b.scrollHeight + "px"; b.style.opacity = "1";
-    h.onclick = () => {
-      if (o) { b.style.maxHeight = "0"; b.style.opacity = "0"; ic.style.transform = "rotate(-90deg)"; }
-      else { b.style.maxHeight = b.scrollHeight + "px"; b.style.opacity = "1"; ic.style.transform = "rotate(0deg)"; }
-      o = !o;
-    };
-  };
-  setup("tips-header", "tips-box", "tips-icon");
-  setup("strengths-header", "strengths-box", "strengths-icon");
-}
-
-// --- PLAYER TRENDS ---
-function renderTrends(data) {
-  const stats = calcStats(data);
-  const container = document.getElementById("kda-trends");
-
-  const players = Object.entries(stats).map(([name, s]) => {
-    const getTrend = (history) => {
-      if (history.length < 10) return { trend: "▶", diff: 0, avgRecent: 0 };
-      const recent = history.slice(-trendWindow);
-      const previous = history.slice(0, -trendWindow);
-      const avgRecent = recent.reduce((a, b) => a + b, 0) / recent.length;
-      const avgPrev = previous.reduce((a, b) => a + b, 0) / (previous.length || 1);
-      const diff = avgRecent - avgPrev;
-      return { trend: diff > 0.1 ? "▲" : diff < -0.1 ? "▼" : "▶", avgRecent };
-    };
-
-    const kdaT = getTrend(s.gameHistory);
-    const kpT = s.kpHistory.length ? getTrend(s.kpHistory) : null;
-    const opggT = s.opggHistory.length ? getTrend(s.opggHistory) : null;
-
-    return { name, kdaT, kpT, opggT };
+  // --- Bind window buttons ---
+  container.querySelectorAll("[data-objectives-window]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      objectivesTrendWindow = btn.getAttribute("data-objectives-window");
+      renderObjectives(statsData, timelineData);
+    });
   });
 
-  container.innerHTML = `
-    <div class="bg-white shadow-lg rounded-2xl p-6 text-center mb-6">
-      <h2 class="text-2xl font-bold text-orange-600 mb-4">📈 Trend</h2>
-      <div class="flex justify-center mb-4 gap-3">
-        <button onclick="setTrendWindow(5)" class="px-3 py-1 rounded-md text-sm font-medium ${
-          trendWindow === 5 ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-700"
-        }">Last 5 games</button>
-        <button onclick="setTrendWindow(10)" class="px-3 py-1 rounded-md text-sm font-medium ${
-          trendWindow === 10 ? "bg-orange-500 text-white" : "bg-gray-100 text-gray-700"
-        }">Last 10 games</button>
-      </div>
-      <div class="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
-        ${players
-          .map(
-            (p) => `
-          <div data-player-stat="${p.name}" class="rounded-xl p-3 bg-neutral-50 shadow-md">
-            <h3 class="font-semibold text-lg">${p.name}</h3>
-            <p class="text-sm text-gray-600">KDA: <span class="${
-              p.kdaT.trend === "▲"
-                ? "text-green-600"
-                : p.kdaT.trend === "▼"
-                ? "text-red-600"
-                : "text-gray-400"
-            }">${p.kdaT.trend}</span> (${p.kdaT.avgRecent?.toFixed(2) || "—"})</p>
-            ${
-              p.opggT
-                ? `<p class="text-sm text-gray-600">OP.GG: <span class="${
-                    p.opggT.trend === "▲"
-                      ? "text-green-600"
-                      : p.opggT.trend === "▼"
-                      ? "text-red-600"
-                      : "text-gray-400"
-                  }">${p.opggT.trend}</span> (${p.opggT.avgRecent?.toFixed(1)})</p>`
-                : ""
-            }
-            ${
-              p.kpT
-                ? `<p class="text-sm text-gray-600">KP: <span class="${
-                    p.kpT.trend === "▲"
-                      ? "text-green-600"
-                      : p.kpT.trend === "▼"
-                      ? "text-red-600"
-                      : "text-gray-400"
-                  }">${p.kpT.trend}</span> (${p.kpT.avgRecent?.toFixed(1)}%)</p>`
-                : ""
-            }
-          </div>`
-          )
-          .join("")}
-      </div>
-    </div>`;
-}
+  // --- Bind objective type tabs ---
+  container.querySelectorAll("[data-objectives-type]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      objectivesObjectiveGroup = btn.getAttribute("data-objectives-type");
+      renderObjectives(statsData, timelineData);
+    });
+  });
 
-function setTrendWindow(n) {
-  trendWindow = n;
-  if (cachedRows) {
-    renderTrends(cachedRows);
-  } else {
-    loadData();
+  // --- Bind role view tabs (core vs flex) ---
+  const roleButtons = container.querySelectorAll("[data-role-view]");
+  if (roleButtons && roleButtons.length) {
+    roleButtons.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const view = btn.getAttribute("data-role-view");
+        roleButtons.forEach((b) => {
+          if (b === btn) {
+            b.classList.add("bg-slate-800", "text-white");
+            b.classList.remove("text-slate-600");
+          } else {
+            b.classList.remove("bg-slate-800", "text-white");
+            b.classList.add("text-slate-600");
+          }
+        });
+
+        container.querySelectorAll("[data-role-panel]").forEach((panel) => {
+          const panelView = panel.getAttribute("data-role-panel");
+          if (panelView === view) panel.classList.remove("hidden");
+          else panel.classList.add("hidden");
+        });
+      });
+    });
   }
+
+  console.log("🎯 Objectives First-Hit Impact v2.8", {
+    window: objectivesTrendWindow,
+    currentSeason,
+    currentSplit,
+    totalGames,
+    firstOnlyImpacts,
+    activeGroup: objectivesObjectiveGroup,
+    objectiveAttendance,
+    objectiveContext,
+  });
 }
 
 // =========================
+// 
+// 
 // Lane Dynamics & Playmakers v2.1
+//
+// 
 // =========================
 
 let lanePhase = "early"; // "early" | "mid" | "late"
