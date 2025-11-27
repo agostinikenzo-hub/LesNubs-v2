@@ -1052,7 +1052,7 @@ function renderLastSessionCard(logsData) {
     totalGames = Math.max(1, Math.round(sessionRows.length / ROWS_PER_GAME_GUESS));
   }
 
-  if (totalGames < 4) {
+  if (totalGames < 1) {
     container.innerHTML = `
       <section class="section-wrapper fade-in mb-4">
         <div class="dashboard-card bg-white shadow-sm rounded-2xl border border-gray-100 px-4 py-3">
