@@ -872,7 +872,7 @@ function renderMiniCard(
 }
 
 /// ============================================================================
-/// 🕒 LAST SESSION HIGHLIGHTS v1.3 (fixed "ALL participants" lists + HTML)
+/// 🕒 LAST SESSION HIGHLIGHTS v1.4 (FIX: local-day session bucketing for December)
 /// - Uses rows from "test_logs_newdashboard"
 /// - Session = latest date (optionally + previous consecutive date)
 /// - Counts **unique games** via Game/Match ID (fallback: rows/5)
@@ -882,7 +882,7 @@ function renderMiniCard(
 ///       => **per-game averages**
 ///     • Dragon / Baron / Atakhan Participation
 ///       => **games with participation / games played** (e.g. 3/4 (75%))
-///       => now shows **ALL** session participants (including 0/x)
+///       => shows **ALL** session participants (including 0/x)
 ///     • Vision→Objective Ratio, Carry Impact, Team Contribution
 ///       => per-game averages
 /// - Renders into #last-session
@@ -921,14 +921,32 @@ function renderLastSessionCard(logsData) {
     r["Match Date"] ||
     r["Game Time"];
 
+  // --- Date helpers (FIXED) --------------------------------------------------
+  // Handles:
+  // - "27.11.25 20:52" (your sheet format)
+  // - dd.mm.yyyy [HH:MM]
+  // - yyyy-mm-dd[ HH:MM[:SS]]
+  // - Date objects
+  // - Google Sheets / Excel serial numbers
   const parseDateTime = (val) => {
-    const s = String(val || "").trim();
+    if (val === undefined || val === null || val === "") return null;
+
+    if (val instanceof Date) {
+      return isNaN(val.getTime()) ? null : val;
+    }
+
+    // Sheets/Excel serial date number (days since 1899-12-30)
+    if (typeof val === "number" && Number.isFinite(val)) {
+      const ms = Date.UTC(1899, 11, 30) + val * 86400000;
+      const d = new Date(ms);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    const s = String(val).trim();
     if (!s) return null;
 
-    const native = new Date(s);
-    if (!isNaN(native.getTime())) return native;
-
-    const m = s.match(
+    // dd.mm.yy(yy) [HH:MM]
+    let m = s.match(
       /^(\d{1,2})\.(\d{1,2})\.(\d{2,4})(?:[ T](\d{1,2}):(\d{2}))?$/
     );
     if (m) {
@@ -940,10 +958,28 @@ function renderLastSessionCard(logsData) {
       const hour = HH !== undefined ? parseInt(HH, 10) : 0;
       const min = MM !== undefined ? parseInt(MM, 10) : 0;
       const d = new Date(year, month, day, hour, min, 0);
-      if (!isNaN(d.getTime())) return d;
+      return isNaN(d.getTime()) ? null : d;
     }
 
-    return null;
+    // yyyy-mm-dd[ HH:MM[:SS]]  (build as LOCAL, don't rely on Date.parse quirks)
+    m = s.match(
+      /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/
+    );
+    if (m) {
+      const [, yy, mm, dd, HH, MM, SS] = m;
+      const year = parseInt(yy, 10);
+      const month = parseInt(mm, 10) - 1;
+      const day = parseInt(dd, 10);
+      const hour = HH !== undefined ? parseInt(HH, 10) : 0;
+      const min = MM !== undefined ? parseInt(MM, 10) : 0;
+      const sec = SS !== undefined ? parseInt(SS, 10) : 0;
+      const d = new Date(year, month, day, hour, min, sec);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Fallback: native parse (last resort)
+    const native = new Date(s);
+    return isNaN(native.getTime()) ? null : native;
   };
 
   const formatDateLabel = (dateObj) => {
@@ -954,17 +990,19 @@ function renderLastSessionCard(logsData) {
     return `${d}.${m}.${y}`;
   };
 
+  // IMPORTANT FIX: bucket by LOCAL calendar day (not UTC)
   const dateKey = (d) => {
-    const y = d.getUTCFullYear();
-    const m = (d.getUTCMonth() + 1).toString().padStart(2, "0");
-    const day = d.getUTCDate().toString().padStart(2, "0");
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   };
 
+  // Local calendar diff (DST-safe)
   const diffDays = (d1, d2) => {
     const t1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
     const t2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
-    return Math.round((t1 - t2) / (1000 * 60 * 60 * 24));
+    return Math.round((t1 - t2) / 86400000);
   };
 
   // --- 1) Build date map & determine "Last Session" -------------------------
@@ -972,7 +1010,7 @@ function renderLastSessionCard(logsData) {
     .map((r) => {
       const raw = getRawDateValue(r);
       const d = parseDateTime(raw);
-      return { row: r, dateObj: d };
+      return { row: r, dateObj: d, raw };
     })
     .filter((x) => x.dateObj);
 
@@ -1002,6 +1040,7 @@ function renderLastSessionCard(logsData) {
     byDateKey[key].push(row);
   });
 
+  // Sort by key "YYYY-MM-DD" (works lexicographically)
   const sortedKeys = Object.keys(byDateKey).sort((a, b) => (a < b ? -1 : 1));
   if (!sortedKeys.length) return;
 
@@ -1052,6 +1091,7 @@ function renderLastSessionCard(logsData) {
     totalGames = Math.max(1, Math.round(sessionRows.length / ROWS_PER_GAME_GUESS));
   }
 
+  // If session is too small, show info card (threshold = 4 games)
   if (totalGames < 1) {
     container.innerHTML = `
       <section class="section-wrapper fade-in mb-4">
@@ -1136,7 +1176,7 @@ function renderLastSessionCard(logsData) {
 
   const playerStats = {}; // name -> { player, gameIds:Set, rowGames:number, metrics:{} }
 
-  sessionRows.forEach((row, rowIdx) => {
+  sessionRows.forEach((row) => {
     const name = playerKey(row);
     if (!name) return;
 
@@ -1168,7 +1208,7 @@ function renderLastSessionCard(logsData) {
         }
       }
 
-      // For participation we still want them included even if blank → blank just means "no hit"
+      // Participation: keep them in list even if blank (blank = no hit)
       if (raw === undefined || raw === null || raw === "") return;
 
       let v;
@@ -1190,67 +1230,65 @@ function renderLastSessionCard(logsData) {
   });
 
   // --- 4) Build per-metric lists (ALL players for ALL metrics) -----------------
-const allPlayers = Object.values(playerStats).filter((p) => p.gameIds.size > 0);
+  const allPlayers = Object.values(playerStats).filter((p) => p.gameIds.size > 0);
 
-const metricLists = activeMetrics
-  .map((m) => {
-    const entries = [];
+  const metricLists = activeMetrics
+    .map((m) => {
+      const entries = [];
 
-    allPlayers.forEach((p) => {
-      const gamesPlayed = p.gameIds.size;
+      allPlayers.forEach((p) => {
+        const gamesPlayed = p.gameIds.size;
 
-      // Participation: hits/games for everyone (including 0/x)
-      if (m.statType === "participation") {
+        // Participation: hits/games for everyone (including 0/x)
+        if (m.statType === "participation") {
+          const stat = p.metrics[m.key];
+          const hits = stat?.hitGameIds ? stat.hitGameIds.size : 0;
+
+          entries.push({
+            player: p.player,
+            value: gamesPlayed ? hits / gamesPlayed : 0,
+            games: gamesPlayed,
+            metricHits: hits,
+            metricGames: gamesPlayed,
+          });
+          return;
+        }
+
+        // Avg metrics: include everyone, even if blank -> treat as 0 (but only if they played)
         const stat = p.metrics[m.key];
-        const hits = stat?.hitGameIds ? stat.hitGameIds.size : 0;
+        const value =
+          stat && stat.count
+            ? (m.statType === "sum" ? stat.sum : stat.sum / stat.count)
+            : 0;
 
         entries.push({
           player: p.player,
-          value: gamesPlayed ? hits / gamesPlayed : 0,
+          value,
           games: gamesPlayed,
-          metricHits: hits,
-          metricGames: gamesPlayed,
+          metricHits: null,
+          metricGames: null,
+          hasValue: !!(stat && stat.count),
         });
-        return;
-      }
-
-      // Avg metrics: include everyone, even if blank -> treat as 0 (but only if they played)
-      const stat = p.metrics[m.key];
-      const value =
-        stat && stat.count
-          ? (m.statType === "sum" ? stat.sum : stat.sum / stat.count)
-          : 0;
-
-      entries.push({
-        player: p.player,
-        value,
-        games: gamesPlayed,
-        metricHits: null,
-        metricGames: null,
-        hasValue: !!(stat && stat.count),
       });
-    });
 
-    // Sort:
-    // - participation: ratio desc, then hits desc, then name
-    // - others: value desc, then (hasValue) desc, then name
-    entries.sort((a, b) => {
-      if (m.statType === "participation") {
+      // Sort
+      entries.sort((a, b) => {
+        if (m.statType === "participation") {
+          if (b.value !== a.value) return b.value - a.value;
+          if ((b.metricHits || 0) !== (a.metricHits || 0))
+            return (b.metricHits || 0) - (a.metricHits || 0);
+          return a.player.localeCompare(b.player);
+        }
+
         if (b.value !== a.value) return b.value - a.value;
-        if ((b.metricHits || 0) !== (a.metricHits || 0))
-          return (b.metricHits || 0) - (a.metricHits || 0);
+        if ((b.hasValue ? 1 : 0) !== (a.hasValue ? 1 : 0))
+          return (b.hasValue ? 1 : 0) - (a.hasValue ? 1 : 0);
         return a.player.localeCompare(b.player);
-      }
+      });
 
-      if (b.value !== a.value) return b.value - a.value;
-      if ((b.hasValue ? 1 : 0) !== (a.hasValue ? 1 : 0))
-        return (b.hasValue ? 1 : 0) - (a.hasValue ? 1 : 0);
-      return a.player.localeCompare(b.player);
-    });
-
-    return { metric: m, list: entries };
-  })
-  .filter((x) => x.list.length > 0);
+      return { metric: m, list: entries };
+    })
+    .filter((x) => x.list.length > 0);
 
   // --- 5) Build HTML ---------------------------------------------------------
   const miniCardsHTML = metricLists
@@ -1342,11 +1380,11 @@ const metricLists = activeMetrics
   console.log("🕒 Last Session card rendered", {
     sessionLabel,
     totalGames,
+    latestKey,
     activeMetrics: activeMetrics.map((m) => m.label),
     players: Object.keys(playerStats),
   });
 }
-
 
 
 
