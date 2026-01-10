@@ -4,3 +4,4 @@ scripts/
 *.csv
 *.json
 .env
+.DS_Store
