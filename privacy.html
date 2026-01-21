@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Les Nübs — Privacy Notice</title>
+
+    <!-- Keep consistent styling with the site (if you still use them) -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="season26.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+
+    <style>
+      /* Minimal readable doc styling (doesn't depend on Tailwind) */
+      body {
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: #f8fafc;
+        color: #111827;
+      }
+      .wrap {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 24px 16px 64px;
+      }
+      .card {
+        background: rgba(255,255,255,0.75);
+        border: 1px solid rgba(148,163,184,0.35);
+        border-radius: 18px;
+        padding: 18px 18px;
+        box-shadow: 0 12px 30px rgba(15,23,42,0.06);
+        backdrop-filter: blur(10px);
+      }
+      h1 {
+        margin: 10px 0 6px;
+        font-size: 28px;
+        letter-spacing: -0.02em;
+      }
+      .sub {
+        color: rgba(100,116,139,0.95);
+        font-size: 13px;
+        line-height: 1.4;
+        margin-bottom: 14px;
+      }
+      h2 {
+        margin: 22px 0 10px;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+      p, li {
+        font-size: 14px;
+        line-height: 1.55;
+        color: rgba(15,23,42,0.88);
+      }
+      ul { margin: 8px 0 0 18px; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148,163,184,0.35);
+        background: rgba(255,255,255,0.70);
+        font-size: 12px;
+        font-weight: 800;
+        color: rgba(15,23,42,0.82);
+        margin: 10px 0 0;
+      }
+      .muted { color: rgba(100,116,139,0.95); }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+      }
+      a { color: #ff8000; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .hr {
+        height: 1px;
+        background: rgba(148,163,184,0.35);
+        margin: 16px 0;
+      }
+      .small { font-size: 12px; }
+    </style>
+  </head>
+
+  <body class="s26">
+    <div class="wrap">
+      <div class="card">
+        <div class="pill">🔒 Privacy Notice</div>
+        <h1>Les Nübs — Privacy Notice</h1>
+        <div class="sub">
+          This dashboard is a small community project. We do not run analytics, ads, tracking pixels, or session replay.
+          <br />
+          <span class="muted">Last updated:</span> <span class="mono">[YYYY-MM-DD]</span>
+        </div>
+
+        <div class="hr"></div>
+
+        <h2>1) Who is responsible for this site?</h2>
+        <p>
+          <strong>Data controller / publisher:</strong> <span class="mono">[Your name / org]</span><br />
+          <strong>Contact:</strong> <span class="mono">[email or contact form]</span><br />
+          <strong>Hosting provider:</strong> <span class="mono">[e.g., GitHub Pages / Vercel / Netlify / custom host]</span>
+        </p>
+
+        <h2>2) What data do we collect?</h2>
+        <p>
+          We do not ask you to create an account and we do not intentionally collect personal data through analytics or advertising tools.
+          However, like most websites, some data may be processed:
+        </p>
+        <ul>
+          <li>
+            <strong>Server logs (hosting):</strong> the hosting provider may process technical log data such as IP address,
+            timestamp, requested page, and user agent for security, debugging, and abuse prevention.
+          </li>
+        </ul>
+
+        <h2>3) “Third-party requests” (external services contacted by your browser)</h2>
+        <p>
+          Even if we do not track you, your browser may contact third-party services to load assets (fonts, styles, data, images).
+          Those third parties can receive technical data like your IP address and user agent.
+        </p>
+
+        <h2>4) External services used on this site</h2>
+
+        <p><strong>(A) Fonts — Google Fonts</strong></p>
+        <ul>
+          <li>Purpose: load the “Inter” font.</li>
+          <li>Domains typically contacted: <span class="mono">fonts.googleapis.com</span>, <span class="mono">fonts.gstatic.com</span></li>
+          <li>Data involved: technical connection data (IP, user agent; possibly referrer depending on browser settings).</li>
+          <li>
+            Optional improvement: self-host fonts to avoid external calls.
+          </li>
+        </ul>
+
+        <p><strong>(B) CSS framework — Tailwind CDN (development)</strong></p>
+        <ul>
+          <li>Purpose: load styles via the Tailwind CDN script.</li>
+          <li>Domain typically contacted: <span class="mono">cdn.tailwindcss.com</span></li>
+          <li>Data involved: technical connection data (IP, user agent; possibly referrer).</li>
+          <li>
+            Optional improvement: build Tailwind into a local CSS file for production.
+          </li>
+        </ul>
+
+        <p><strong>(C) Data source — Google Sheets published CSV</strong></p>
+        <ul>
+          <li>Purpose: fetch match / LP data published as CSV.</li>
+          <li>Domain typically contacted: <span class="mono">docs.google.com</span> (and related Google domains).</li>
+          <li>Data involved: technical connection data (IP, user agent; possibly referrer).</li>
+          <li>
+            Note: the sheet is published for read-only access; the site displays aggregated stats.
+          </li>
+        </ul>
+
+        <p><strong>(D) Game assets — Riot Data Dragon (champion icons)</strong></p>
+        <ul>
+          <li>Purpose: load champion icons for display.</li>
+          <li>Domains: depends on Riot CDN endpoints used by the Data Dragon URLs.</li>
+          <li>Data involved: technical connection data (IP, user agent; possibly referrer).</li>
+          <li>
+            Optional improvement: cache or proxy icons to reduce third-party calls.
+          </li>
+        </ul>
+
+        <h2>5) Cookies / local storage</h2>
+        <p>
+          We do not set advertising cookies or analytics cookies.
+        </p>
+        <ul>
+          <li><strong>Cookies:</strong> none for tracking/advertising.</li>
+          <li>
+            <strong>LocalStorage / sessionStorage:</strong>
+            <span class="mono">[Choose one]</span>
+            <ul>
+              <li>
+                Option A (today): “We do not use localStorage or sessionStorage for tracking. Some pages may store
+                purely functional preferences (if enabled).”
+              </li>
+              <li>
+                Option B (if you add CSV caching): “We may store cached CSV data in localStorage to speed up load times.
+                This is used only for performance and can be cleared by clearing your browser storage.”
+              </li>
+            </ul>
+          </li>
+        </ul>
+
+        <h2>6) Retention</h2>
+        <p>
+          We do not maintain user profiles. Any hosting logs are retained according to the hosting provider’s policies.
+          If we store local cached data (performance cache), it remains in your browser until it expires (if implemented) or
+          you clear site data.
+        </p>
+
+        <h2>Your rights</h2>
+        <p>
+          If you have questions about this notice or want details about any processing done by the hosting provider,
+          contact: <span class="mono">[email]</span>.
+        </p>
+
+        <div class="hr"></div>
+
+        <p class="small muted">
+          This notice is informational and aims to be transparent about external requests and technical logs.
+          If you later add analytics, ads, or non-essential cookies/storage, you’ll likely need a consent mechanism
+          (and “refuse” should be as easy as “accept”).
+        </p>
+
+        <p class="small">
+          <a href="season26lp.html">← Back to the dashboard</a>
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

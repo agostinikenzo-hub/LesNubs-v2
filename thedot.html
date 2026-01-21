@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Les Nübs — Season 26 Dashboard (The CAL)</title>
+
+    <!-- Fonts & Tailwind -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="season26.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+
+    <style>
+      /* ===== CAL styles (unchanged) ===== */
+      body.s26 {
+        --cal-dot: 10px;
+        --cal-gap: 10px;
+        --cal-line: rgba(15, 23, 42, 0.07);
+        --cal-cell-bg: rgba(255, 247, 237, 0.68);
+      }
+
+      body.s26 .cal-year-toggle {
+        display: inline-flex;
+        gap: 6px;
+        margin-left: 8px;
+        vertical-align: middle;
+      }
+
+      body.s26 .cal-year-btn {
+        font-size: 0.65rem;
+        font-weight: 900;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.45);
+        background: rgba(255, 255, 255, 0.45);
+        color: #334155;
+        cursor: pointer;
+        transition: transform 0.16s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      body.s26 .cal-year-btn:hover {
+        border-color: rgba(249, 115, 22, 0.24);
+        box-shadow: 0 8px 22px rgba(249, 115, 22, 0.08);
+        transform: translateY(-1px);
+      }
+
+      body.s26 .cal-year-btn:active {
+        transform: translateY(0) scale(0.985);
+      }
+
+      body.s26 .cal-year-btn.is-active {
+        border-color: rgba(249, 115, 22, 0.25);
+        background: rgba(249, 115, 22, 0.12);
+        color: #c2410c;
+      }
+
+      body.s26 .cal-sub {
+        color: var(--ln-muted);
+        font-size: 0.82rem;
+        margin-top: 0.15rem;
+      }
+
+      body.s26 .cal-status {
+        color: var(--ln-muted);
+        font-size: 0.74rem;
+        margin-top: 0.35rem;
+      }
+
+      body.s26 .cal-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      body.s26 .cal-view-btn {
+        cursor: pointer;
+        user-select: none;
+        border: 1px solid rgba(148, 163, 184, 0.38);
+        background: rgba(255, 255, 255, 0.45);
+        transition: transform 0.16s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+      }
+      body.s26 .cal-view-btn:hover {
+        border-color: rgba(249, 115, 22, 0.24);
+        box-shadow: 0 8px 22px rgba(249, 115, 22, 0.08);
+        transform: translateY(-1px);
+      }
+      body.s26 .cal-view-btn:active { transform: translateY(0px) scale(0.985); }
+      body.s26 .cal-view-btn[aria-disabled="true"] {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+
+      body.s26 .cal-weekdays-inline {
+        display: grid;
+        grid-template-columns: repeat(7, var(--cal-dot));
+        column-gap: var(--cal-gap);
+        width: max-content;
+        margin-top: 0.65rem;
+        color: rgba(100, 116, 139, 0.82);
+        font-size: 0.62rem;
+        font-weight: 900;
+        letter-spacing: 0.02em;
+        user-select: none;
+      }
+      body.s26 .cal-weekdays-inline span {
+        width: var(--cal-dot);
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+      }
+
+      body.s26 .cal-month-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1px;
+        background: var(--cal-line);
+        margin-top: 1rem;
+        border: none;
+        border-radius: 0;
+      }
+
+      @media (max-width: 980px) {
+        body.s26 .cal-month-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 640px) {
+        body.s26 .cal-month-grid { grid-template-columns: 1fr; }
+      }
+
+      body.s26 .cal-month {
+        background: var(--cal-cell-bg);
+        padding: 0.9rem 1rem 1.05rem;
+        min-height: 160px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        text-align: center;
+      }
+
+      body.s26 .cal-month-title {
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        color: var(--ln-ink);
+        font-size: 0.92rem;
+        margin-bottom: 0.75rem;
+      }
+
+      body.s26 .dots-grid {
+        display: grid;
+        grid-template-columns: repeat(7, var(--cal-dot));
+        column-gap: var(--cal-gap);
+        row-gap: 10px;
+        align-items: center;
+        justify-content: center;
+        width: max-content;
+        margin: 0 auto;
+      }
+
+      body.s26 .day-dot,
+      body.s26 .dot-spacer {
+        width: var(--cal-dot);
+        height: var(--cal-dot);
+        border-radius: 9999px;
+        display: inline-block;
+        transform: translateZ(0);
+        will-change: transform;
+      }
+
+      body.s26 .dot-spacer { opacity: 0; }
+
+      body.s26 .day-dot--empty {
+        background: rgba(100, 116, 139, 0.17);
+        box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.05);
+      }
+
+      body.s26 .day-dot--played {
+        background: rgba(249, 115, 22, 0.95);
+        box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.14);
+      }
+
+      body.s26 .day-dot--multi {
+        box-shadow:
+          0 0 0 2px rgba(249, 115, 22, 0.16),
+          0 0 0 1px rgba(249, 115, 22, 0.10);
+      }
+
+      body.s26 .day-dot--inactive { opacity: 0.22; }
+      body.s26 .day-dot--future   { opacity: 0.40; }
+
+      /* === Solo color (blue) + mixed (split) === */
+      body.s26 {
+        --cal-flex: rgba(249, 115, 22, 0.95);
+        --cal-solo: rgba(59, 130, 246, 0.95);
+      }
+
+      body.s26 .day-dot--solo {
+        background: var(--cal-solo);
+        box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.16);
+      }
+
+      body.s26 .day-dot--mixed {
+        background: linear-gradient(135deg, var(--cal-flex) 0 50%, var(--cal-solo) 50% 100%);
+        box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+      }
+
+      body.s26 .day-dot--solo.day-dot--multi {
+        box-shadow:
+          0 0 0 2px rgba(59, 130, 246, 0.18),
+          0 0 0 1px rgba(59, 130, 246, 0.10);
+      }
+
+      body.s26 .day-dot--mixed.day-dot--multi {
+        box-shadow:
+          0 0 0 2px rgba(15, 23, 42, 0.10),
+          0 0 0 1px rgba(15, 23, 42, 0.06);
+      }
+
+      body.s26 .cal-split-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0;
+        margin-top: 1rem;
+        border: none;
+        background: transparent;
+      }
+      @media (max-width: 860px) {
+        body.s26 .cal-split-grid { grid-template-columns: 1fr; }
+      }
+
+      body.s26 .cal-bin { padding: 1rem 0; }
+
+      body.s26 .cal-bin + .cal-bin {
+        border-left: 1px solid var(--cal-line);
+        padding-left: 1rem;
+        margin-left: 1rem;
+      }
+
+      @media (max-width: 860px) {
+        body.s26 .cal-bin + .cal-bin {
+          border-left: none;
+          border-top: 1px solid var(--cal-line);
+          padding-left: 0;
+          margin-left: 0;
+          padding-top: 1rem;
+          margin-top: 1rem;
+        }
+      }
+
+      body.s26 .bin-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0.65rem;
+        font-size: 0.80rem;
+        font-weight: 900;
+        letter-spacing: -0.01em;
+        color: var(--ln-ink);
+      }
+
+      body.s26 .bin-sub {
+        font-size: 0.72rem;
+        color: var(--ln-muted);
+        font-weight: 800;
+        white-space: nowrap;
+      }
+
+      body.s26 .bin-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-content: flex-start;
+        min-height: 120px;
+      }
+
+      body.s26 .cal-lock-card {
+        margin-top: 0.85rem;
+        padding: 1rem;
+        border: 1px solid var(--cal-line);
+        border-radius: 1.35rem;
+        background: rgba(255, 255, 255, 0.40);
+      }
+      body.s26 .cal-lock-title {
+        font-weight: 900;
+        color: var(--ln-orange);
+        letter-spacing: -0.02em;
+      }
+      body.s26 .cal-lock-text {
+        color: var(--ln-muted);
+        margin-top: 0.25rem;
+        font-size: 0.82rem;
+        line-height: 1.35;
+      }
+    </style>
+  </head>
+
+  <body class="s26 fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
+    <!-- =======================================
+         TOP NAVIGATION / APP SHELL
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
+        <!-- Brand -->
+        <div class="flex items-center gap-2 shrink-0">
+          <div
+            class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
+            style="background: linear-gradient(135deg, #ff8000, #e7afb2);"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 26</span>
+            <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v4.0</span>
+          </div>
+        </div>
+
+        <!-- Desktop Nav -->
+        <nav class="hidden md:flex items-center text-[0.7rem] font-medium text-slate-600 flex-1 min-w-0">
+          <!-- LEFT GROUP -->
+          <div class="flex items-center gap-4 whitespace-nowrap min-w-0">
+            <!-- Season Switcher (desktop) -->
+            <div id="season-menu-wrapper" class="relative">
+              <button
+                id="season-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                S26
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="season-menu-panel"
+                class="hidden z-50 absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="season-menu-btn"
+              >
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Season 26</div>
+
+                <a
+                  href="index.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Team (5-stack)
+                </a>
+
+                <a
+                  href="Season26Otherflex.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Other Flex (1–4)
+                </a>
+
+                <a
+                  href="season26solo.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Solo/Duo (420)
+                </a>
+
+                <!-- ✅ NEW: LP page link (add this page file to your project) -->
+                <a
+                  href="season26lp.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  LP Tracker
+                </a>
+
+                <a
+                  href="thedot.html"
+                  aria-current="page"
+                  class="block px-3 py-2 font-semibold"
+                  style="background: rgba(231,175,178,0.20); color:#ff8000;"
+                  role="menuitem"
+                >
+                  The CAL
+                </a>
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Archive</div>
+
+                <a
+                  href="season-25.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  S25 (Archive)
+                </a>
+              </div>
+            </div>
+
+            <!-- (Optional) in-page nav for CAL -->
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#cal-section">The CAL</button>
+          </div>
+
+          <!-- RIGHT GROUP -->
+          <div class="ml-auto flex items-center gap-4 whitespace-nowrap">
+            <div id="more-menu-wrapper" class="relative">
+              <button
+                id="more-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                More
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="more-menu-panel"
+                class="hidden absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="more-menu-btn"
+              >
+                <a href="metrics.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Metric Glossary
+                </a>
+                <a href="methodology.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Calculations
+                </a>
+                <a href="changelog.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Version Tracker
+                </a>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Mobile Menu Toggle -->
+        <button
+          id="nav-toggle"
+          class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700 ml-auto"
+        >
+          <span id="nav-toggle-icon">☰</span>
+        </button>
+      </div>
+
+      <!-- Mobile Nav Panel -->
+      <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+          <!-- Season links (mobile) -->
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
+            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
+            <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
+            <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
+            <a href="season26lp.html" class="py-1 block hover:text-[#ff8000]">LP Tracker</a>
+            <a href="thedot.html" class="py-1 block font-semibold" style="color:#ff8000;">The CAL</a>
+
+            <div class="my-2 border-t border-slate-200"></div>
+
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Archive</div>
+            <a href="season-25.html" class="py-1 block hover:text-[#ff8000]">S25 (Archive)</a>
+          </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <!-- In-page navigation -->
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#cal-section">The CAL</button>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <!-- Linked pages -->
+          <a href="metrics.html" class="py-1 text-left hover:text-[#ff8000]">Metric Glossary</a>
+          <a href="methodology.html" class="py-1 text-left hover:text-[#ff8000]">Calculations</a>
+          <a href="changelog.html" class="py-1 text-left hover:text-[#ff8000]">Version Tracker</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-bold leading-tight" style="color:#ff8000;">
+              Les Nübs — Season 26 (The CAL)
+            </h1>
+            <p class="text-xs sm:text-sm text-gray-600">
+              Tiny calendar of grind days. Dots light up when the squad played.
+            </p>
+          </div>
+
+          <!-- Quick toggle pills -->
+          <div class="flex items-center gap-2 text-xs">
+            <a
+              href="index.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+            >
+              Team (5)
+            </a>
+
+            <a
+              href="Season26Otherflex.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+            >
+              Other Flex (1–4)
+            </a>
+
+            <a
+              href="season26solo.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              title="Solo/Duo (420)"
+            >
+              Solo/Duo
+            </a>
+
+            <a
+              href="season26lp.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              title="LP Tracker"
+            >
+              LP
+            </a>
+
+            <a
+              href="thedot.html"
+              class="px-3 py-1 rounded-full font-semibold"
+              style="border:1px solid #e7afb2; background: rgba(231,175,178,0.18); color:#ff8000;"
+              title="The CAL"
+            >
+              The CAL
+            </a>
+          </div>
+        </div>
+
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">
+          Dots don’t lie.
+        </p>
+      </div>
+    </section>
+
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    <main class="w-full flex-1">
+      <div class="max-w-6xl mx-auto px-4 pb-10">
+        <section id="cal-section" class="section-wrapper">
+          <div class="trend-header">
+            <div>
+              <h2>
+                The LesNübs Calendar - Opening Days
+                <span class="cal-year-toggle" role="group" aria-label="Select year">
+                  <button id="cal-year-2026" class="cal-year-btn is-active" type="button">2026</button>
+                  <button id="cal-year-2025" class="cal-year-btn" type="button">2025</button>
+                </span>
+              </h2>
+
+              <div class="cal-sub">Tiny calendar of grind days. Dots light up when the squad played. Takes a bit to load boys!</div>
+              <div id="cal-status" class="cal-status"></div>
+
+              <div class="cal-weekdays-inline" aria-hidden="true">
+                <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+              </div>
+            </div>
+
+            <div class="cal-actions">
+              <button id="btn-view" class="pill cal-view-btn" aria-pressed="false" aria-disabled="false" type="button">
+                <span id="btn-view-label">SONA BEST SUPP</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="cal-locked" class="hidden">
+            <div class="cal-lock-card">
+              <div class="cal-lock-title">🔒 Locked</div>
+              <div id="cal-locked-text" class="cal-lock-text"></div>
+            </div>
+          </div>
+
+          <div id="cal-calendar">
+            <div id="cal-grid" class="cal-month-grid"></div>
+          </div>
+
+          <div id="cal-split" class="hidden">
+            <div class="cal-split-grid">
+              <div class="cal-bin">
+                <div class="bin-title">
+                  <span>Played days</span>
+                  <span id="bin-played-sub" class="bin-sub"></span>
+                </div>
+                <div id="bin-played" class="bin-grid"></div>
+              </div>
+
+              <div class="cal-bin">
+                <div class="bin-title">
+                  <span>No-game days</span>
+                  <span id="bin-empty-sub" class="bin-sub"></span>
+                </div>
+                <div id="bin-empty" class="bin-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="w-full border-t border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
+        Season 26 · Built by LeBenz &amp; Les Nübs staff · The CAL view
+      </div>
+    </footer>
+
+    <!-- Shared nav behavior -->
+    <script type="module" src="./core/nav.js"></script>
+
+    <!-- CAL script -->
+    <script src="./thedot.js"></script>
+  </body>
+</html>
