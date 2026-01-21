@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Les Nübs — Season 25 Dashboard</title>
+
+    <!-- Fonts & Tailwind -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- PapaParse -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+    <!-- Your CSS -->
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+  </head>
+
+  <body class="fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
+    <!-- =======================================
+         TOP NAVIGATION / APP SHELL
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-5">
+        <!-- Brand -->
+        <div class="flex items-center gap-2">
+          <div
+            class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 25</span>
+            <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v4.0</span>
+          </div>
+        </div>
+
+        <!-- Desktop Nav -->
+        <nav class="hidden md:flex items-center gap-4 text-[0.7rem] font-small text-slate-600">
+          <!-- Season Switcher (desktop) -->
+          <div id="season-menu-wrapper" class="relative">
+            <button
+              id="season-menu-btn"
+              class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-orange-300 hover:text-orange-500"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              S25
+              <span class="text-[0.8em]">▾</span>
+            </button>
+
+            <div
+              id="season-menu-panel"
+              class="hidden absolute left-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+              role="menu"
+              aria-labelledby="season-menu-btn"
+            >
+              <a
+                href="index.html"
+                class="block px-3 py-2 hover:bg-orange-50 hover:text-orange-600"
+                role="menuitem"
+              >
+                S26 (Current)
+              </a>
+              <a
+                href="season-25.html"
+                aria-current="page"
+                class="block px-3 py-2 bg-orange-50 text-orange-600 font-semibold"
+                role="menuitem"
+              >
+                S25 (Archive)
+              </a>
+            </div>
+          </div>
+
+          <!-- In-page navigation -->
+          <button class="hover:text-orange-500" data-scroll="#character-select">Players</button>
+
+          <button class="hover:text-orange-500" data-scroll="#season-summary">Summary</button>
+
+          <button class="hover:text-orange-500 inline-flex items-center gap-1" data-scroll="#last-session-section">
+            Last Session
+            <span id="badge-last-session" class="ml-1 w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+          </button>
+
+          <button class="hover:text-orange-500" data-scroll="#objective-impact">Total Player Impact</button>
+
+          <button class="hover:text-orange-500" data-scroll="#team-synergy">Team Synergy</button>
+
+          <button class="hover:text-orange-500 inline-flex items-center gap-1" data-scroll="#lane-dynamics">
+            Lane Dynamics &amp; Playmakers
+            <span id="badge-lane-dynamics" class="ml-1 w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+          </button>
+
+          <button class="hover:text-orange-500 inline-flex items-center gap-1" data-scroll="#objectives">
+            Objective Impact
+            <span id="badge-objectives" class="ml-1 w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+          </button>
+
+          <button class="hover:text-orange-500" data-scroll="#splits">Splits</button>
+
+          <!-- More (dropdown) -->
+          <div id="more-menu-wrapper" class="relative">
+            <button
+              id="more-menu-btn"
+              class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-orange-300 hover:text-orange-500"
+              aria-haspopup="true"
+              aria-expanded="false"
+            >
+              More
+              <span class="text-[0.8em]">▾</span>
+            </button>
+
+            <!-- Panel -->
+            <div
+              id="more-menu-panel"
+              class="hidden absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+              role="menu"
+              aria-labelledby="more-menu-btn"
+            >
+              <a
+                href="metrics.html"
+                class="block px-3 py-2 hover:bg-orange-50 hover:text-orange-600"
+                role="menuitem"
+              >
+                Metric Glossary
+              </a>
+              <a
+                href="methodology.html"
+                class="block px-3 py-2 hover:bg-orange-50 hover:text-orange-600"
+                role="menuitem"
+              >
+                Calculations
+              </a>
+              <a
+                href="changelog.html"
+                class="block px-3 py-2 hover:bg-orange-50 hover:text-orange-600"
+                role="menuitem"
+              >
+                Version Tracker
+              </a>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Mobile Menu Toggle -->
+        <button
+          id="nav-toggle"
+          class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700"
+        >
+          <span id="nav-toggle-icon">☰</span>
+        </button>
+      </div>
+
+      <!-- Mobile Nav Panel -->
+      <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+          <!-- Season links (mobile) -->
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season</div>
+            <a href="index.html" class="py-1 block hover:text-orange-500">S26 (Current)</a>
+            <a href="season-25.html" class="py-1 block text-orange-600 font-semibold">S25 (Archive)</a>
+          </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <!-- In-page navigation -->
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#character-select">Players</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#season-summary">Summary</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#last-session-section">Last Session</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#objective-impact">Total Player Impact</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#team-synergy">Team Synergy</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#lane-dynamics">
+            Lane Dynamics &amp; Playmakers
+          </button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#objectives">Objective Impact</button>
+          <button class="py-1 text-left hover:text-orange-500" data-scroll="#splits">Splits</button>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <!-- Linked pages -->
+          <a href="metrics.html" class="py-1 text-left hover:text-orange-500">Metric Glossary</a>
+          <a href="methodology.html" class="py-1 text-left hover:text-orange-500">Calculations</a>
+          <a href="changelog.html" class="py-1 text-left hover:text-orange-500">Version Tracker</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- =======================================
+         PAGE HEADER
+    ======================================== -->
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
+          Les Nübs — The Chronicles Since Season 25
+        </h1>
+        <p class="text-xs sm:text-sm text-gray-600">
+          "You're sitting on a disgustingly rich dataset for an amateur team."
+        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">
+          There is a future where we track how many times Achten went AFK in clutch moments. Today,
+          we settle for everything else.
+        </p>
+      </div>
+    </section>
+
+    <!-- =======================================
+         MAIN CONTENT
+    ======================================== -->
+    <main class="w-full flex-1">
+      <div id="sheet-container" class="max-w-6xl mx-auto px-4 pb-10">
+        <!-- Load status -->
+        <div id="status" class="text-xs text-gray-600 mb-4">Loading data...</div>
+
+        <!-- Character Select -->
+        <section id="character-select" class="my-6">
+          <h2 class="text-lg font-semibold text-orange-600 mb-1">Choose Your Champion</h2>
+          <p class="text-xs text-gray-500 mb-4">
+            Click a Les Nüb to highlight their row across all tables.
+          </p>
+          <div id="avatars" class="flex flex-wrap gap-4"></div>
+        </section>
+
+        <!-- Season Summary -->
+        <section id="summary-section" class="mb-8">
+          <div id="season-summary"></div>
+        </section>
+
+        <!-- Last Session -->
+        <section id="last-session-section" class="mb-8">
+          <div id="last-session"></div>
+        </section>
+
+        <!-- Objective Impact + Total Player Impact -->
+        <section id="objective-impact-section" class="mb-8">
+          <div id="objective-impact"></div>
+        </section>
+
+        <!-- Performance Impact -->
+        <section id="performance-impact-section" class="mb-8">
+          <div id="performance-impact"></div>
+        </section>
+
+        <!-- Team Synergy & Identity -->
+        <section id="team-synergy-section" class="mb-8">
+          <div id="team-synergy"></div>
+        </section>
+
+        <!-- Lane Dynamics -->
+        <section id="lane-dynamics-section" class="mb-8">
+          <div id="lane-dynamics"></div>
+        </section>
+
+        <!-- Objectives -->
+        <section id="objectives" class="mb-8">
+          <div id="objectives"></div>
+        </section>
+
+        <!-- Season Overview -->
+        <section id="season-overview-section" class="mb-8">
+          <div id="season-overview"></div>
+        </section>
+
+        <!-- Trends -->
+        <section id="trends-section" class="mb-8">
+          <div id="kda-trends"></div>
+        </section>
+
+        <!-- Splits -->
+        <section id="splits" class="mb-8"></section>
+      </div>
+    </main>
+
+    <!-- =======================================
+         FOOTER
+    ======================================== -->
+    <footer class="w-full border-t border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
+        Data auto-syncs from Google Sheets · Season 25 · Built by LeBenz &amp; Les Nübs staff.
+      </div>
+    </footer>
+
+    <!-- =======================================
+         SCRIPTS
+    ======================================== -->
+    <!-- Main logic -->
+    <script src="script.js"></script>
+
+    <script>
+      // ===== Mobile nav toggle =====
+      const navToggle = document.getElementById("nav-toggle");
+      const navMenu = document.getElementById("nav-menu");
+      const navToggleIcon = document.getElementById("nav-toggle-icon");
+
+      if (navToggle && navMenu && navToggleIcon) {
+        navToggle.addEventListener("click", () => {
+          const open = !navMenu.classList.contains("hidden");
+          if (open) {
+            navMenu.classList.add("hidden");
+            navToggleIcon.textContent = "☰";
+          } else {
+            navMenu.classList.remove("hidden");
+            navToggleIcon.textContent = "✕";
+          }
+        });
+      }
+
+      // ===== Smooth scroll for in-page nav =====
+      document.querySelectorAll("[data-scroll]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const target = btn.getAttribute("data-scroll");
+          if (!target) return;
+          const el = document.querySelector(target);
+          if (!el) return;
+
+          const headerOffset = 72;
+          const rect = el.getBoundingClientRect();
+          const offsetTop = window.scrollY + rect.top - headerOffset;
+
+          window.scrollTo({ top: offsetTop, behavior: "smooth" });
+
+          if (navMenu && !navMenu.classList.contains("hidden")) {
+            navMenu.classList.add("hidden");
+            if (navToggleIcon) navToggleIcon.textContent = "☰";
+          }
+        });
+      });
+
+      // ===== Season dropdown (desktop) =====
+      document.addEventListener("DOMContentLoaded", () => {
+        const wrap = document.getElementById("season-menu-wrapper");
+        const btn = document.getElementById("season-menu-btn");
+        const panel = document.getElementById("season-menu-panel");
+
+        function closeSeason() {
+          if (!panel) return;
+          panel.classList.add("hidden");
+          if (btn) btn.setAttribute("aria-expanded", "false");
+        }
+
+        if (wrap && btn && panel) {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const isHidden = panel.classList.contains("hidden");
+            if (isHidden) {
+              panel.classList.remove("hidden");
+              btn.setAttribute("aria-expanded", "true");
+            } else {
+              closeSeason();
+            }
+          });
+
+          document.addEventListener("click", (e) => {
+            if (!wrap.contains(e.target)) closeSeason();
+          });
+
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeSeason();
+          });
+        }
+      });
+
+      // ===== "More" dropdown (desktop) =====
+      document.addEventListener("DOMContentLoaded", () => {
+        const moreWrapper = document.getElementById("more-menu-wrapper");
+        const moreBtn = document.getElementById("more-menu-btn");
+        const morePanel = document.getElementById("more-menu-panel");
+
+        function closeMore() {
+          if (!morePanel) return;
+          morePanel.classList.add("hidden");
+          if (moreBtn) moreBtn.setAttribute("aria-expanded", "false");
+        }
+
+        if (moreWrapper && moreBtn && morePanel) {
+          moreBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const isHidden = morePanel.classList.contains("hidden");
+            if (isHidden) {
+              morePanel.classList.remove("hidden");
+              moreBtn.setAttribute("aria-expanded", "true");
+            } else {
+              closeMore();
+            }
+          });
+
+          document.addEventListener("click", (e) => {
+            if (!moreWrapper.contains(e.target)) closeMore();
+          });
+
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") closeMore();
+          });
+        }
+      });
+    </script>
+  </body>
+</html>

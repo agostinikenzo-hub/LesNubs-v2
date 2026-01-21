@@ -2,63 +2,190 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1"
-    />
-    <title>Les Nübs — Calculation Methodology</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Les Nübs — Calculations</title>
 
-    <!-- Fonts & Tailwind (match main dashboard) -->
+    <!-- Fonts & Tailwind -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Shared Styles -->
+    <!-- CSS -->
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="season26.css" />
     <link rel="icon" href="assets/favicon.ico" />
   </head>
 
-  <body class="fade-bg min-h-screen flex flex-col text-gray-800">
+  <body class="s26 fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
     <!-- =======================================
-         HEADER / SHELL
+         TOP NAVIGATION / APP SHELL (S26 standard)
     ======================================== -->
     <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
-      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
         <!-- Brand -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 shrink-0">
           <div
-            class="w-8 h-8 rounded-xl bg-orange-500 flex items-center justify-center text-white text-xs font-bold"
+            class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
+            style="background: linear-gradient(135deg, #ff8000, #e7afb2);"
           >
             LN
           </div>
           <div class="flex flex-col leading-tight">
-            <span class="text-sm font-semibold text-slate-900">
-              Les Nübs — Season 25
-            </span>
-            <span class="text-[0.65rem] text-slate-500">
-              Calculation &amp; Scoring Methodology
-            </span>
+            <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 26</span>
+            <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v4.0</span>
           </div>
         </div>
 
-        <!-- Right actions -->
-        <div class="flex items-center gap-2">
-          <a
-            href="metrics.html"
-            class="hidden sm:inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[0.65rem] border border-slate-200 text-slate-600 hover:text-orange-500 hover:border-orange-400 transition"
-          >
-            Metric Glossary
-          </a>
-          <a
-            href="index.html"
-            class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium
-                   bg-orange-500 text-white shadow-sm hover:bg-orange-600 hover:shadow-md
-                   transition-all duration-200"
-          >
-            ← Back to Dashboard
-          </a>
+        <!-- Desktop Nav -->
+        <nav class="hidden md:flex items-center text-[0.7rem] font-medium text-slate-600 flex-1 min-w-0">
+          <!-- LEFT GROUP -->
+          <div class="flex items-center gap-4 whitespace-nowrap min-w-0">
+            <!-- Season Switcher (desktop) -->
+            <div id="season-menu-wrapper" class="relative">
+              <button
+                id="season-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                S26
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="season-menu-panel"
+                class="hidden absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="season-menu-btn"
+              >
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Season 26</div>
+
+                <a
+                  href="index.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Team (5-stack) — Current
+                </a>
+
+                <a
+                  href="Season26Otherflex.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Other Flex (1–4)
+                </a>
+
+                <a
+                  href="season26solo.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Solo/Duo (420)
+                </a>
+
+                <a
+                  href="thedot.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  The CAL
+                </a>
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Archive</div>
+
+                <a
+                  href="season-25.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  S25 (Archive)
+                </a>
+              </div>
+            </div>
+
+            <!-- In-page navigation (optional) -->
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#calc-top">Calculations</button>
+          </div>
+
+          <!-- RIGHT GROUP -->
+          <div class="ml-auto flex items-center gap-4 whitespace-nowrap">
+            <div id="more-menu-wrapper" class="relative">
+              <button
+                id="more-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                More
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="more-menu-panel"
+                class="hidden absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="more-menu-btn"
+              >
+                <a href="metrics.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Metric Glossary
+                </a>
+                <a
+                  href="methodology.html"
+                  aria-current="page"
+                  class="block px-3 py-2 font-semibold"
+                  style="background: rgba(231,175,178,0.20); color:#ff8000;"
+                  role="menuitem"
+                >
+                  Calculations
+                </a>
+                <a href="changelog.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Version Tracker
+                </a>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Mobile Menu Toggle -->
+        <button
+          id="nav-toggle"
+          class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700 ml-auto"
+        >
+          <span id="nav-toggle-icon">☰</span>
+        </button>
+      </div>
+
+      <!-- Mobile Nav Panel -->
+      <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+          <!-- Season links (mobile) -->
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
+            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack) — Current</a>
+            <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
+            <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
+            <a href="thedot.html" class="py-1 block hover:text-[#ff8000]">The CAL</a>
+
+            <div class="my-2 border-t border-slate-200"></div>
+
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Archive</div>
+            <a href="season-25.html" class="py-1 block hover:text-[#ff8000]">S25 (Archive)</a>
+          </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#calc-top">Calculations</button>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <a href="metrics.html" class="py-1 text-left hover:text-[#ff8000]">Metric Glossary</a>
+          <a href="methodology.html" class="py-1 text-left font-semibold" style="color:#ff8000;">Calculations</a>
+          <a href="changelog.html" class="py-1 text-left hover:text-[#ff8000]">Version Tracker</a>
         </div>
       </div>
     </header>
@@ -66,17 +193,54 @@
     <!-- =======================================
          PAGE HEADER
     ======================================== -->
-    <section class="w-full">
+    <section id="calc-top" class="w-full">
       <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
-        <h1 class="text-2xl sm:text-3xl font-bold text-orange-500 leading-tight">
-          How the Dashboard Calculates Your Story
-        </h1>
-        <p class="text-xs sm:text-sm text-gray-600 max-w-3xl">
-          This page documents the exact logic behind the live dashboard:
-          how we read the sheet, how we detect guests, how we build
-          Season Summary, Total Player Impact, Team Synergy, and Split Snapshots.
-        </p>
-        <p class="text-[0.7rem] text-gray-500 mt-1 italic">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-bold leading-tight" style="color:#ff8000;">
+              Calculations &amp; Methodology
+            </h1>
+            <p class="text-xs sm:text-sm text-gray-600 max-w-3xl">
+              This page documents the logic behind the dashboard: how we read the sheet, detect guests,
+              and compute Summary, Total Player Impact, Team Synergy, and Splits.
+            </p>
+          </div>
+
+          <!-- Quick toggle pills (same as S26 pages) -->
+          <div class="flex items-center gap-2 text-xs">
+            <a
+              href="index.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+            >
+              Team (5)
+            </a>
+
+            <a
+              href="Season26Otherflex.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+            >
+              Other Flex (1–4)
+            </a>
+
+            <a
+              href="season26solo.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              title="Solo/Duo (420)"
+            >
+              Solo/Duo
+            </a>
+
+            <a
+              href="thedot.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              title="The CAL"
+            >
+              The CAL
+            </a>
+          </div>
+        </div>
+
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">
           If something feels off, you can point at a formula here and bully it into improvement.
         </p>
       </div>
@@ -85,11 +249,6 @@
     <!-- =======================================
          MAIN CONTENT
     ======================================== -->
-    
-    
-    
-    
-    
     <main class="w-full flex-1">
       <div class="max-w-6xl mx-auto px-4 pb-10">
         <!-- Filter Tabs -->
@@ -97,7 +256,7 @@
           <div class="dashboard-card flex flex-col gap-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 class="text-[1.05rem] font-semibold text-orange-500">
+                <h2 class="text-[1.05rem] font-semibold" style="color:#ff8000;">
                   Browse by System
                 </h2>
                 <p class="text-[0.7rem] text-gray-600 max-w-xl">
@@ -108,43 +267,44 @@
 
               <div class="flex flex-wrap gap-1.5 text-[0.65rem]">
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-orange-500 bg-orange-500 text-white font-medium shadow-sm"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border font-medium shadow-sm"
+                  style="border-color:#ff8000; background:#ff8000; color:white;"
                   data-topic="all"
                 >
                   All Sections
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="data"
                 >
                   Data &amp; Guests
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="summary"
                 >
                   Season Summary
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="tpi"
                 >
                   Total Player Impact
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="aow"
                 >
                   Objective Weights (AOW)
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="synergy"
                 >
                   Team Synergy &amp; Identity
                 </button>
                 <button
-                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-orange-400 hover:text-orange-500"
+                  class="calc-filter-btn px-3 py-1.5 rounded-full border border-gray-200 bg-white text-gray-700 hover:border-[#e7afb2] hover:text-[#ff8000]"
                   data-topic="splits"
                 >
                   Split Snapshots
@@ -167,15 +327,16 @@
          FOOTER
     ======================================== -->
     <footer class="w-full border-t border-slate-200">
-      <div
-        class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500"
-      >
-        Transparent by design — if a score looks cursed, you know exactly why. Les Nübs · 2025
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
+        Transparent by design — if a score looks cursed, you know exactly why. Les Nübs · 2026
       </div>
     </footer>
 
+    <!-- Shared nav behavior -->
+    <script type="module" src="./core/nav.js"></script>
+
     <!-- =======================================
-         DATA (from script.js) & RENDER LOGIC
+         PAGE SCRIPT (existing logic kept)
     ======================================== -->
     <script>
       // Helper label
@@ -605,7 +766,7 @@
             </div>
             ${
               item.example
-                ? `<p class="text-[0.65rem] text-orange-500">
+                ? `<p class="text-[0.65rem]" style="color:#ff8000;">
                      <span class="font-semibold">Example:</span> ${item.example}
                    </p>`
                 : ""
@@ -629,22 +790,12 @@
 
           // reset buttons
           filterButtons.forEach((b) => {
-            b.classList.remove(
-              "bg-orange-500",
-              "text-white",
-              "border-orange-500",
-              "shadow-sm"
-            );
+            b.classList.remove("bg-orange-500", "text-white", "border-orange-500", "shadow-sm");
             b.classList.add("bg-white", "text-gray-700", "border-gray-200");
           });
 
           // activate this one
-          btn.classList.add(
-            "bg-orange-500",
-            "text-white",
-            "border-orange-500",
-            "shadow-sm"
-          );
+          btn.classList.add("bg-orange-500", "text-white", "border-orange-500", "shadow-sm");
           btn.classList.remove("bg-white", "text-gray-700", "border-gray-200");
 
           // show/hide cards

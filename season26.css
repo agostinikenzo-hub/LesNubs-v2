@@ -1,0 +1,610 @@
+/* -------------------------------------------------
+   Les Nübs — Season 26 Styles (S26-only)
+   Safe-scoped: ONLY applies when <body class="s26 ...">
+   ------------------------------------------------- */
+
+/* =========================
+   Theme Tokens
+   ========================= */
+body.s26 {
+  --ln-orange: #f97316;
+  --ln-orange-weak: rgba(249, 115, 22, 0.14);
+  --ln-border: #e5e7eb;
+  --ln-muted: #64748b;
+  --ln-ink: #0f172a;
+  --ln-card: rgba(255, 255, 255, 0.92);
+  --ln-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+
+  /* Noise: drop your generated file here */
+  --ln-noise: url("assets/noise/season26_noise_tile_256.png");
+
+  font-family: "Inter", sans-serif;
+  overflow-x: hidden;
+  color: var(--ln-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =========================
+   Background
+   ========================= */
+body.s26.fade-bg {
+  background: linear-gradient(135deg, #fffaf5, #eef2ff);
+  min-height: 100vh;
+}
+
+/* =========================
+   Accessibility / Motion
+   ========================= */
+body.s26 :focus-visible {
+  outline: 2px solid rgba(249, 115, 22, 0.45);
+  outline-offset: 2px;
+  border-radius: 0.6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.s26 * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =========================
+   Character Select / Avatars
+   ========================= */
+@keyframes s26PulseSelect {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.06);
+    filter: brightness(1.05);
+  }
+}
+
+body.s26 .character img {
+  transition: transform 0.25s ease, filter 0.25s ease;
+}
+
+body.s26 .character:hover img {
+  transform: scale(1.05);
+  filter: brightness(1.08);
+}
+
+body.s26 .character.selected img {
+  animation: s26PulseSelect 1.2s ease-in-out infinite;
+}
+
+/* Avatar fall-in */
+body.s26 .avatar-fall {
+  transform: translateY(-80px);
+  opacity: 0;
+  animation: s26FallIn 0.75s ease forwards;
+}
+
+@keyframes s26FallIn {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+body.s26 .avatar-fall:nth-child(1) { animation-delay: 0.06s; }
+body.s26 .avatar-fall:nth-child(2) { animation-delay: 0.12s; }
+body.s26 .avatar-fall:nth-child(3) { animation-delay: 0.18s; }
+body.s26 .avatar-fall:nth-child(4) { animation-delay: 0.24s; }
+body.s26 .avatar-fall:nth-child(5) { animation-delay: 0.30s; }
+body.s26 .avatar-fall:nth-child(6) { animation-delay: 0.36s; }
+
+/* =========================
+   Loading / Fade Transitions
+   ========================= */
+body.s26 #loading-screen.fade-out {
+  animation: s26FadeOut 0.65s ease forwards;
+}
+
+@keyframes s26FadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+body.s26 .fade-section {
+  transition: opacity 0.35s ease, max-height 0.35s ease;
+}
+
+/* =========================
+   Collapsible / Retractable
+   ========================= */
+body.s26 .collapsible {
+  overflow: hidden;
+  transition: max-height 0.35s ease, padding 0.25s ease, opacity 0.25s ease;
+  opacity: 1;
+}
+
+body.s26 .collapsible.closed {
+  max-height: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  opacity: 0;
+}
+
+body.s26 .retractable-box {
+  background-color: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--ln-border);
+  border-radius: 0.9rem;
+  padding: 0.75rem 1rem;
+  margin-top: 0.75rem;
+  transition: max-height 0.35s ease, opacity 0.35s ease, transform 0.2s ease;
+}
+
+body.s26 .retractable-box.closed {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+body.s26 .retractable-box.open {
+  opacity: 1;
+  max-height: none;
+}
+
+body.s26 .retractable-header {
+  font-weight: 600;
+  color: var(--ln-orange);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+
+body.s26 .retractable-icon {
+  transition: transform 0.25s ease;
+}
+
+/* =========================
+   Tooltip
+   ========================= */
+body.s26 .tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: default;
+}
+
+body.s26 .tooltip .tooltip-text {
+  visibility: hidden;
+  width: max-content;
+  max-width: 240px;
+  background-color: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  text-align: center;
+  font-size: 0.75rem;
+  padding: 6px 10px;
+  border-radius: 8px;
+  position: absolute;
+  z-index: 50;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
+
+body.s26 .tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px);
+}
+
+/* =========================
+   Focus Tips
+   ========================= */
+body.s26 .focus-tip {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--ln-border);
+  border-radius: 0.9rem;
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+
+body.s26 .focus-tip:hover {
+  box-shadow: 0 2px 10px rgba(249, 115, 22, 0.14);
+  transform: translateY(-2px);
+}
+
+body.s26 .focus-tip strong {
+  color: var(--ln-orange);
+}
+
+/* =========================
+   Card System
+   ========================= */
+@keyframes s26FadeUp {
+  0% { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+body.s26 .dashboard-card {
+  background: var(--ln-card);
+  border: 1px solid rgba(229, 231, 235, 0.7);
+  border-radius: 1.25rem;
+  box-shadow: var(--ln-shadow);
+  padding: 1.25rem;
+  transition: box-shadow 0.25s ease, transform 0.25s ease, border-color 0.25s ease;
+  will-change: transform;
+  animation: s26FadeUp 0.55s ease forwards;
+}
+
+body.s26 .dashboard-card:hover {
+  box-shadow: 0 8px 28px rgba(249, 115, 22, 0.12);
+  border-color: rgba(249, 115, 22, 0.22);
+  transform: translateY(-2px);
+}
+
+body.s26 .section-wrapper {
+  background: rgba(255, 247, 237, 0.68);
+  border: 1px solid rgba(249, 115, 22, 0.16);
+  border-radius: 1.5rem;
+  padding: 1.25rem;
+  box-shadow: 0 3px 12px rgba(249, 115, 22, 0.08);
+}
+
+/* Trend header */
+body.s26 .trend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+body.s26 .trend-header h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--ln-orange);
+  letter-spacing: -0.02em;
+}
+
+/* Stagger helpers */
+body.s26 .fade-in { opacity: 0; animation: s26FadeIn 0.7s ease forwards; }
+@keyframes s26FadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+body.s26 .fade-in.delay-1 { animation-delay: 0.15s; }
+body.s26 .fade-in.delay-2 { animation-delay: 0.30s; }
+body.s26 .fade-in.delay-3 { animation-delay: 0.45s; }
+
+/* =========================
+   Tables
+   ========================= */
+body.s26 .table-clean {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+body.s26 .table-clean th {
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.9);
+}
+
+body.s26 .table-clean td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid rgba(241, 245, 249, 0.95);
+}
+
+body.s26 .table-clean tr:hover td {
+  background: rgba(249, 250, 251, 0.85);
+}
+
+/* =========================
+   Glass / Mini Cards
+   ========================= */
+body.s26 .glass3d {
+  --filter-glass3d: blur(52px) brightness(1.16) saturate(3.6);
+  --color-glass3d: hsl(25 52% 90% / 0.62);
+  --noise-glass3d: var(--ln-noise);
+
+  position: relative;
+  isolation: isolate; /* keeps pseudo layers contained */
+  z-index: 1;
+  border-radius: 1.25rem;
+  overflow: hidden;
+
+  /* Helps some browsers render blur smoother */
+  transform: translateZ(0);
+  will-change: transform;
+
+  box-shadow:
+    0 0 0.75px hsl(205 20% 10% / 0.2),
+    0.7px 0.8px 1.2px -0.4px hsl(205 20% 10% / 0.1),
+    1.3px 1.5px 2.2px -0.8px hsl(205 20% 10% / 0.1),
+    2.3px 2.6px 3.9px -1.2px hsl(205 20% 10% / 0.1),
+    3.9px 4.4px 6.6px -1.7px hsl(205 20% 10% / 0.1),
+    6.5px 7.2px 10.9px -2.1px hsl(205 20% 10% / 0.1),
+    8px 9px 14px -2.5px hsl(205 20% 10% / 0.2);
+}
+
+body.s26 .glass3d::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+
+  background-color: var(--color-glass3d);
+  background-image: var(--noise-glass3d);
+  background-size: 256px 256px; /* matches the tile */
+  background-repeat: repeat;
+  background-blend-mode: overlay;
+  opacity: 0.9;
+
+  -webkit-backdrop-filter: var(--filter-glass3d);
+  backdrop-filter: var(--filter-glass3d);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  body.s26 .glass3d::before {
+    background-color: hsl(25 52% 92% / 0.96);
+    background-image: none;
+  }
+}
+
+body.s26 .glass3d::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+
+  box-shadow:
+    inset 2px 2px 1px -3px hsl(205 20% 90% / 0.8),
+    inset 4px 4px 2px -6px hsl(205 20% 90% / 0.3),
+    inset 1.5px 1.5px 1.5px -0.75px hsl(205 20% 90% / 0.15),
+    inset 1.5px 1.5px 0.25px hsl(205 20% 90% / 0.03),
+    inset 0 0 0.25px 0.5px hsl(205 20% 90% / 0.03);
+}
+
+body.s26 .glass3d > * {
+  position: relative;
+  z-index: 3;
+}
+
+/* Mini-card layout helpers */
+body.s26 .mini-card {
+  border-radius: 1.25rem;
+  padding: 0.9rem 1rem;
+}
+
+body.s26 .mini-card-title {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ln-ink);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+body.s26 .mini-card-subtitle {
+  color: var(--ln-muted);
+  font-size: 0.78rem;
+  margin-top: 0.15rem;
+}
+
+body.s26 .mini-card-metrics {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+body.s26 .mini-metric {
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(229, 231, 235, 0.68);
+  border-radius: 0.9rem;
+  padding: 0.55rem 0.65rem;
+}
+
+body.s26 .mini-metric .label {
+  font-size: 0.68rem;
+  color: #64748b;
+  font-weight: 700;
+}
+
+body.s26 .mini-metric .value {
+  margin-top: 0.2rem;
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--ln-ink);
+}
+
+/* Badges / pills */
+body.s26 .mini-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(249, 115, 22, 0.25);
+  background: rgba(249, 115, 22, 0.12);
+  color: #c2410c;
+}
+
+body.s26 .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.6);
+  color: #334155;
+}
+
+/* Quick “delta” colors (for +gold, -gold, etc.) */
+body.s26 .delta-pos { color: #16a34a; }
+body.s26 .delta-neg { color: #dc2626; }
+body.s26 .delta-neutral { color: #64748b; }
+
+/* =========================
+   Splits section tweaks
+   ========================= */
+body.s26 #splits {
+  margin-top: 2rem;
+}
+
+body.s26 #splits .dashboard-card {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+body.s26 #splits .grid {
+  align-items: stretch;
+}
+
+body.s26 #splits .split-card {
+  height: 100%;
+}
+
+body.s26 #splits .split-card:hover {
+  box-shadow: 0 8px 28px rgba(249, 115, 22, 0.12);
+  transform: translateY(-2px);
+}
+
+/* =========================
+   Responsive
+   ========================= */
+@media (max-width: 640px) {
+  body.s26 .dashboard-card {
+    padding: 1rem;
+  }
+  body.s26 .trend-header h2 {
+    font-size: 1.02rem;
+  }
+  body.s26 .mini-card-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+#flex-cards .mini-card {
+  width: 320px;
+}
+
+/* =================================================
+   S26 Modular Cards (Solo/Flex reuse)
+   ================================================= */
+body.s26 .card-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.6rem;
+}
+
+body.s26 .card-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--ln-orange);
+  line-height: 1.1;
+}
+
+body.s26 .card-subtitle {
+  font-size: 0.78rem;
+  color: var(--ln-muted);
+  line-height: 1.2;
+}
+
+body.s26 .s26-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.6rem;
+}
+
+body.s26 .s26-stat {
+  background: rgba(255, 255, 255, 0.56);
+  border: 1px solid rgba(229, 231, 235, 0.68);
+  border-radius: 0.95rem;
+  padding: 0.7rem 0.8rem;
+}
+
+body.s26 .s26-stat-label {
+  font-size: 0.68rem;
+  color: #64748b;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+body.s26 .s26-stat-value {
+  margin-top: 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: var(--ln-ink);
+}
+
+body.s26 .s26-stat-hint {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: var(--ln-muted);
+}
+
+/* Table alias for modular components (maps to your table-clean vibe) */
+body.s26 .s26-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+body.s26 .s26-table th {
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+  font-weight: 700;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.9);
+}
+
+body.s26 .s26-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid rgba(241, 245, 249, 0.95);
+}
+
+body.s26 .s26-table tr:hover td {
+  background: rgba(249, 250, 251, 0.85);
+}
+/* Solo mini cards: prevent chip text clipping */
+body.s26 .mini-card .mini-metric .value,
+body.s26 .mini-card .chip-value {
+  font-size: 0.92rem;
+  line-height: 1.05;
+}
+
+body.s26 .mini-card .chip-value {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+body.s26 .mini-card .s26-dot {
+  width: 12px;
+  height: 12px;
+}
+body.s26 .mini-card .s26-dot.latest {
+  outline-width: 2px;
+}

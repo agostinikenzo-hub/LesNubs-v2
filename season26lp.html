@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Les Nübs — Season 26 (LP Tracker)</title>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- ⚠️ Dev only. For prod, compile Tailwind. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="season26.css" />
+    <link rel="icon" href="assets/favicon.ico" />
+  </head>
+
+  <body class="s26 fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
+        <!-- Brand -->
+        <a href="index.html" class="flex items-center gap-2 shrink-0">
+          <div
+            class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
+            style="background: linear-gradient(135deg, #ff8000, #e7afb2);"
+            aria-label="Les Nübs"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 26</span>
+            <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v5.0</span>
+          </div>
+        </a>
+
+        <!-- Desktop nav -->
+        <nav class="hidden md:flex items-center text-[0.7rem] font-medium text-slate-600 flex-1 min-w-0">
+          <div class="flex items-center gap-4 whitespace-nowrap min-w-0">
+            <!-- Season menu -->
+            <div id="season-menu-wrapper" class="relative">
+              <button
+                id="season-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                S26 <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="season-menu-panel"
+                class="hidden absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="season-menu-btn"
+              >
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Season 26</div>
+
+                <a
+                  href="index.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Team (5-stack)</a
+                >
+                <a
+                  href="Season26Otherflex.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Other Flex (1–4)</a
+                >
+                <a
+                  href="season26solo.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Solo/Duo (420)</a
+                >
+
+                <a
+                  href="season26lp.html"
+                  aria-current="page"
+                  class="block px-3 py-2 font-semibold"
+                  style="background: rgba(231,175,178,0.20); color:#ff8000;"
+                  role="menuitem"
+                >
+                  LP (Ranks) — Current
+                </a>
+
+                <a
+                  href="thedot.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >The CAL</a
+                >
+              </div>
+            </div>
+
+            <!-- LP page tabs (same “top menu” vibe, with pink dots) -->
+            <button
+              class="hover:text-[#ff8000] transition-colors inline-flex items-center gap-2"
+              data-scroll="#lp-snapshot-section"
+            >
+              Snapshot
+            </button>
+
+            <button
+              class="hover:text-[#ff8000] transition-colors inline-flex items-center gap-2"
+              data-scroll="#lp-progress-section"
+            >
+              Progression
+            </button>
+
+            <button
+              class="hover:text-[#ff8000] transition-colors inline-flex items-center gap-2"
+              data-scroll="#lp-timeline-section"
+            >
+              Timeline
+              <span
+                class="inline-block w-2 h-2 rounded-full"
+                style="background:#e7afb2; box-shadow: 0 0 0 4px rgba(231,175,178,0.18);"
+                aria-hidden="true"
+              ></span>
+            </button>
+
+            <button
+              class="hover:text-[#ff8000] transition-colors inline-flex items-center gap-2"
+              data-scroll="#lp-prize-race-section"
+            >
+              Prize Race
+              <span
+                class="inline-block w-2 h-2 rounded-full"
+                style="background:#e7afb2; box-shadow: 0 0 0 4px rgba(231,175,178,0.18);"
+                aria-hidden="true"
+              ></span>
+            </button>
+          </div>
+
+          <!-- Right side -->
+          <div class="ml-auto flex items-center gap-4 whitespace-nowrap">
+            <div id="more-menu-wrapper" class="relative">
+              <button
+                id="more-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                More <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="more-menu-panel"
+                class="hidden absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="more-menu-btn"
+              >
+                <a
+                  href="metrics.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Metric Glossary</a
+                >
+                <a
+                  href="methodology.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Calculations</a
+                >
+                <a
+                  href="changelog.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Version Tracker</a
+                >
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Mobile toggle -->
+        <button
+          id="nav-toggle"
+          class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700 ml-auto"
+          aria-label="Open navigation"
+        >
+          <span id="nav-toggle-icon">☰</span>
+        </button>
+      </div>
+
+      <!-- Mobile menu -->
+      <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
+            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
+            <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
+            <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
+            <a href="season26lp.html" class="py-1 block font-semibold" style="color:#ff8000;">LP (Ranks) — Current</a>
+            <a href="thedot.html" class="py-1 block hover:text-[#ff8000]">The CAL</a>
+          </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">LP Sections</div>
+            <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-snapshot-section">Snapshot</button>
+            <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-progress-section">Progression</button>
+            <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-timeline-section">Timeline</button>
+            <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-prize-race-section">Prize Race</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="w-full">
+      <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-bold leading-tight" style="color:#ff8000;">
+              Les Nübs — Season 26 (LP Tracker)
+            </h1>
+            <p class="text-xs sm:text-sm text-gray-600">
+              Rank snapshots from <span class="font-semibold">LP26</span>. This is the “ladder history” view.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-2 text-xs">
+            <a
+              href="index.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              >Team (5)</a
+            >
+            <a
+              href="Season26Otherflex.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              >Other Flex (1–4)</a
+            >
+            <a
+              href="season26solo.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              >Solo/Duo</a
+            >
+            <a
+              href="season26lp.html"
+              class="px-3 py-1 rounded-full font-semibold"
+              style="border:1px solid #e7afb2; background: rgba(231,175,178,0.18); color:#ff8000;"
+              >LP</a
+            >
+            <a
+              href="thedot.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              >The CAL</a
+            >
+          </div>
+        </div>
+
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">“It’s not tilted. It’s data.”</p>
+      </div>
+    </section>
+
+    <main class="w-full flex-1">
+      <div class="max-w-6xl mx-auto px-4 pb-10">
+        <div id="status" class="text-xs text-gray-600 mb-4">Loading LP view…</div>
+
+        <section id="lp-snapshot-section" class="mb-6">
+          <div id="lp-snapshot-card" class="dashboard-card"></div>
+        </section>
+
+        <section id="lp-progress-section" class="mb-6">
+          <div id="lp-progress-card" class="dashboard-card"></div>
+        </section>
+
+        <!-- LP TIMELINE (animated) -->
+        <section id="lp-timeline-section" class="mt-10 mb-10">
+          <div id="lp-timeline" class="dashboard-card"></div>
+        </section>
+
+        <!-- PRIZE RACE (unlockable) -->
+        <section id="lp-prize-race-section" class="mb-8">
+          <div id="lp-prize-race-card" class="dashboard-card"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="w-full border-t border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
+        Season 26 · LP Tracker
+      </div>
+    </footer>
+
+    <script type="module" src="./core/nav.js"></script>
+    <script type="module" src="./pages/season26lp/index.js"></script>
+  </body>
+</html>
