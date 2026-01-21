@@ -1,7 +1,22 @@
-scripts/.env
 # Local data pipeline (do not publish)
 scripts/
+scripts/.env
+.env
+
+# Pipeline outputs / caches
+cache_matches/
+cache_timelines/
+exports_raw_json/
+__pycache__/
+*.pyc
+
+# Local data files
 *.csv
 *.json
-.env
 .DS_Store
+
+# Local pipeline scripts (do not publish)
+season26_pipeline.py
+lp_test_by_puuid.py
+derive_metrics.py
+season26_pipeline_flex.py
