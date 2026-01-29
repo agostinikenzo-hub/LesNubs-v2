@@ -20,6 +20,7 @@ function pad2(n) {
 }
 
 function fmtMMSS(seconds) {
+  if (!Number.isFinite(seconds)) return "—";
   const s = Math.max(0, Math.round(seconds));
   const m = Math.floor(s / 60);
   const r = s % 60;
@@ -103,16 +104,15 @@ function getTimeSec(row) {
   const n2 = num(v2);
   if (Number.isFinite(n2) && n2 > 0) return n2;
 
-  // 3) LAST resort: TIME (can be minutes / something else depending on sheet)
+  // 3) LAST resort: TIME (could be minutes depending on sheet)
   const v3 = pick(raw, ["TIME"]);
   const clock3 = parseClockToSeconds(v3);
   if (Number.isFinite(clock3)) return clock3;
 
   const n3 = num(v3);
-  // If TIME is a small number (20–60), it might be minutes. Convert cautiously.
   if (Number.isFinite(n3) && n3 > 0) {
-    if (n3 >= 10 && n3 <= 70) return n3 * 60; // plausible minutes
-    // otherwise treat as seconds (or ignore later by outlier filter)
+    // If TIME looks like minutes, convert cautiously
+    if (n3 >= 10 && n3 <= 70) return n3 * 60;
     return n3;
   }
 
@@ -130,14 +130,39 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
   const minSeconds = Number.isFinite(opts.minSeconds) ? opts.minSeconds : 240; // remakes < 4:00
   const maxSeconds = Number.isFinite(opts.maxSeconds) ? opts.maxSeconds : 70 * 60; // outliers > 70:00
 
-  // inject tiny local CSS (safe-scoped) for better alignment
+  const rosterOrder = Array.isArray(opts.rosterOrder)
+    ? opts.rosterOrder.map((s) => String(s ?? "").trim()).filter(Boolean)
+    : [];
+
+  // ✅ module-scoped CSS to fix alignment & header layout deterministically
   if (!document.getElementById("s26-avgtime-style")) {
     const st = document.createElement("style");
     st.id = "s26-avgtime-style";
     st.textContent = `
+      body.s26 .avgtime-head{
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap: 1rem;
+        flex-wrap:wrap;
+      }
+
+      body.s26 .avgtime-chips{
+        display:flex;
+        flex-direction:column;
+        align-items:flex-end;
+        gap: .45rem;
+      }
+      body.s26 .avgtime-chips-row{
+        display:flex;
+        gap:.5rem;
+        flex-wrap:wrap;
+        justify-content:flex-end;
+      }
+
       body.s26 .avgtime-chip{
         display:inline-flex; align-items:center; gap:.4rem;
-        padding:.28rem .6rem;
+        padding:.26rem .58rem;
         border-radius:999px;
         border:1px solid rgba(148,163,184,.45);
         background:rgba(255,255,255,.65);
@@ -148,12 +173,17 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
         white-space:nowrap;
       }
       body.s26 .avgtime-chip strong{ font-weight:900; color:#0f172a; }
-      body.s26 .avgtime-num{
-        text-align:right;
+
+      /* ✅ force numeric alignment even if global table styles override */
+      body.s26 .s26-table th.avgtime-num,
+      body.s26 .s26-table td.avgtime-num{
+        text-align:right !important;
         font-variant-numeric: tabular-nums;
       }
+
       body.s26 .avgtime-row-fast td{ background: rgba(16,185,129,0.06); }
       body.s26 .avgtime-row-slow td{ background: rgba(249,115,22,0.07); }
+      body.s26 .avgtime-muted{ color: rgba(100,116,139,0.85); }
     `;
     document.head.appendChild(st);
   }
@@ -170,23 +200,25 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     return;
   }
 
-  const all = rows
-    .map((r) => {
-      const t = getTimeSec(r);
-      return {
-        row: r,
-        player: getPlayer(r),
-        win: getWin(r),
-        timeSec: t,
-        date: r.date instanceof Date && !isNaN(r.date.getTime()) ? r.date : null,
-      };
-    })
-    .filter((x) => x.player && x.player !== "—" && Number.isFinite(x.timeSec) && x.timeSec > 0);
+  // Parse rows once
+  const parsed = (rows || []).map((r) => ({
+    row: r,
+    player: getPlayer(r),
+    win: getWin(r),
+    timeSec: getTimeSec(r),
+    date: r?.date instanceof Date && !isNaN(r.date.getTime()) ? r.date : null,
+  }));
 
-  const removedRemakes = all.filter((x) => x.timeSec < minSeconds).length;
-  const removedOutliers = all.filter((x) => x.timeSec > maxSeconds).length;
+  const withPlayer = parsed.filter((x) => x.player && x.player !== "—");
+  const ignoredNoTime = withPlayer.filter((x) => !Number.isFinite(x.timeSec) || x.timeSec <= 0).length;
 
-  const filtered = all.filter((x) => x.timeSec >= minSeconds && x.timeSec <= maxSeconds);
+  // Only rows with valid time are eligible for filtering
+  const validTime = withPlayer.filter((x) => Number.isFinite(x.timeSec) && x.timeSec > 0);
+
+  const removedRemakes = validTime.filter((x) => x.timeSec < minSeconds).length;
+  const removedOutliers = validTime.filter((x) => x.timeSec > maxSeconds).length;
+
+  const filtered = validTime.filter((x) => x.timeSec >= minSeconds && x.timeSec <= maxSeconds);
 
   if (!filtered.length) {
     el.innerHTML = `
@@ -200,8 +232,8 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     return;
   }
 
-  // Overall stats
-  const totalMatches = filtered.length;
+  // Overall stats (FILTERED)
+  const filteredMatches = filtered.length;
   const wins = filtered.filter((x) => x.win === true);
   const losses = filtered.filter((x) => x.win === false);
 
@@ -216,7 +248,7 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     if (x.timeSec > longest.timeSec) longest = x;
   }
 
-  // Per-player aggregation
+  // Per-player aggregation (FILTERED)
   const byPlayer = new Map();
   for (const x of filtered) {
     if (!byPlayer.has(x.player)) {
@@ -240,7 +272,8 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     if (!p.max || x.timeSec > p.max.timeSec) p.max = x;
   }
 
-  const players = [...byPlayer.values()].map((p) => ({
+  // Build player rows
+  let players = [...byPlayer.values()].map((p) => ({
     player: p.player,
     games: p.games,
     avg: mean(p.times),
@@ -250,19 +283,56 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     max: p.max,
   }));
 
-  // Sort fastest → slowest
-  players.sort((a, b) => a.avg - b.avg);
+  // Optional: include roster players with 0 games (so “Per player” can match roster)
+  if (rosterOrder.length) {
+    const present = new Set(players.map((p) => p.player));
+    for (const name of rosterOrder) {
+      if (!present.has(name)) {
+        players.push({
+          player: name,
+          games: 0,
+          avg: NaN,
+          avgW: NaN,
+          avgL: NaN,
+          min: null,
+          max: null,
+        });
+      }
+    }
+  }
 
-  const fastestName = players[0]?.player ?? "";
-  const slowestName = players[players.length - 1]?.player ?? "";
+  // Sort fastest → slowest, but keep 0-game players at bottom
+  players.sort((a, b) => {
+    const ag = a.games > 0;
+    const bg = b.games > 0;
+    if (ag !== bg) return ag ? -1 : 1;
 
+    const aa = a.games > 0 && Number.isFinite(a.avg) ? a.avg : Infinity;
+    const bb = b.games > 0 && Number.isFinite(b.avg) ? b.avg : Infinity;
+    if (aa !== bb) return aa - bb;
+
+    return String(a.player).localeCompare(String(b.player));
+  });
+
+  // Fastest/slowest among players with games>0 only
+  const played = players.filter((p) => p.games > 0 && Number.isFinite(p.avg));
+  const fastestName = played.length ? played[0].player : "";
+  const slowestName = played.length ? played[played.length - 1].player : "";
+
+  // Header chips: split into two stable rows
   const chips = `
-    <div class="flex items-center gap-2 flex-wrap justify-end">
-      <span class="avgtime-chip">Matches: <strong>${totalMatches}</strong></span>
-      <span class="avgtime-chip">Remakes: <strong>${removedRemakes}</strong></span>
-      <span class="avgtime-chip">Outliers: <strong>${removedOutliers}</strong></span>
-      <span class="avgtime-chip">Shortest: <strong>${escapeHtml(shortest.player)}</strong> ${fmtMMSS(shortest.timeSec)}</span>
-      <span class="avgtime-chip">Longest: <strong>${escapeHtml(longest.player)}</strong> ${fmtMMSS(longest.timeSec)}</span>
+    <div class="avgtime-chips">
+      <div class="avgtime-chips-row">
+        <span class="avgtime-chip">Raw (valid time): <strong>${validTime.length}</strong></span>
+        <span class="avgtime-chip">Matches (filtered): <strong>${filteredMatches}</strong></span>
+        <span class="avgtime-chip">Remakes: <strong>${removedRemakes}</strong></span>
+        <span class="avgtime-chip">Outliers: <strong>${removedOutliers}</strong></span>
+        ${ignoredNoTime ? `<span class="avgtime-chip">Ignored (no time): <strong>${ignoredNoTime}</strong></span>` : ``}
+      </div>
+      <div class="avgtime-chips-row">
+        <span class="avgtime-chip">Shortest: <strong>${escapeHtml(shortest.player)}</strong> ${fmtMMSS(shortest.timeSec)}</span>
+        <span class="avgtime-chip">Longest: <strong>${escapeHtml(longest.player)}</strong> ${fmtMMSS(longest.timeSec)}</span>
+      </div>
     </div>
   `;
 
@@ -276,6 +346,20 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
 
   const tableRows = players
     .map((p) => {
+      if (p.games <= 0) {
+        return `
+          <tr>
+            <td class="font-semibold text-slate-900">${escapeHtml(p.player)}</td>
+            <td class="avgtime-num avgtime-muted">0</td>
+            <td class="avgtime-num avgtime-muted">—</td>
+            <td class="avgtime-num avgtime-muted">—</td>
+            <td class="avgtime-num avgtime-muted">—</td>
+            <td class="avgtime-num avgtime-muted">—</td>
+            <td class="avgtime-num avgtime-muted">—</td>
+          </tr>
+        `;
+      }
+
       const minTxt = p.min ? fmtMMSS(p.min.timeSec) : "—";
       const maxTxt = p.max ? fmtMMSS(p.max.timeSec) : "—";
       const wTxt = Number.isFinite(p.avgW) ? fmtMMSS(p.avgW) : "—";
@@ -300,7 +384,7 @@ export function mountAvgGameTimeCard(el, rows, opts = {}) {
     .join("");
 
   el.innerHTML = `
-    <div class="card-header">
+    <div class="avgtime-head">
       <div>
         <div class="card-title">Average Game Time</div>
         <div class="card-subtitle">

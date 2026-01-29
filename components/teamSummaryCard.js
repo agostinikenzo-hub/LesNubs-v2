@@ -167,6 +167,21 @@ function getDamage(r) {
   );
 }
 
+function getGoldEarned(r) {
+  return toNum(
+    pick(r, [
+      "Gold Earned",
+      "Gold earned",
+      "Total Gold",
+      "Gold",
+      "p.goldEarned",
+      "goldEarned",
+      "p.challenges.goldEarned",
+      "goldEarnedInGame",
+    ])
+  );
+}
+
 function getKills(r) {
   return toNum(pick(r, ["Kills", "p.kills", "kills"]));
 }
@@ -251,10 +266,10 @@ function statCard({ title, value, linesHTML }) {
   `;
 }
 
-function top3Lines(entries, formatter) {
+function topNLines(entries, n, formatter) {
   if (!entries || !entries.length) return "";
   return entries
-    .slice(0, 3)
+    .slice(0, n)
     .map((e, i) => {
       const val = formatter(e.value);
       return `
@@ -314,8 +329,12 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
   const dmgPlacements = [];
   const killPlacements = [];
 
+  const goldAggByPlayer = new Map(); // player -> { sum, cnt }
+
   const multiTotalsByPlayer = new Map();
   const champCounts = new Map();
+
+  const seenMatchPlayer = new Set();
 
   for (const r of rows) {
     const id = getMatchId(r);
@@ -323,10 +342,6 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
 
     const d = parseLooseDate(pick(r, ["Date", "DATE", "Game Date", "Timestamp", "matchDate", "Match Date"]));
     if (d && (!lastUpdated || d.getTime() > lastUpdated.getTime())) lastUpdated = d;
-
-    const player = getPlayer(r);
-    const champ = getChampion(r);
-    if (champ) champCounts.set(champ, (champCounts.get(champ) || 0) + 1);
 
     const win = getWin(r);
     const teamId = getTeamId(r);
@@ -356,6 +371,15 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
     if (!m.teamId && teamId) m.teamId = teamId;
     if (t > m.timePlayedSec) m.timePlayedSec = t;
 
+    const player = getPlayer(r);
+    const champ = getChampion(r);
+
+    const mpKey = player ? `${id}|${player}` : "";
+    if (mpKey && seenMatchPlayer.has(mpKey)) continue;
+    if (mpKey) seenMatchPlayer.add(mpKey);
+
+    if (champ) champCounts.set(champ, (champCounts.get(champ) || 0) + 1);
+
     m.k += getKills(r);
     m.d += getDeaths(r);
     m.a += getAssists(r);
@@ -377,6 +401,14 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
 
     const k = getKills(r);
     if (player && k > 0) killPlacements.push({ player, value: k });
+
+    const gold = getGoldEarned(r);
+    if (player && gold > 0) {
+      const cur = goldAggByPlayer.get(player) || { sum: 0, cnt: 0 };
+      cur.sum += gold;
+      cur.cnt += 1;
+      goldAggByPlayer.set(player, cur);
+    }
 
     if (player) {
       const cur = multiTotalsByPlayer.get(player) || { double: 0, triple: 0, quadra: 0, penta: 0 };
@@ -420,7 +452,10 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
     return secs.reduce((a, b) => a + b, 0) / secs.length;
   })();
 
-  let blueGames = 0, blueWins = 0, redGames = 0, redWins = 0;
+  let blueGames = 0,
+    blueWins = 0,
+    redGames = 0,
+    redWins = 0;
   for (const m of matchList) {
     if (m.teamId === 100) {
       blueGames += 1;
@@ -470,21 +505,29 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
     }
     return { total, topPlayer, topVal };
   }
+
+  function topMultiEntries(field, n = 5) {
+    return [...multiTotalsByPlayer.entries()]
+      .map(([player, v]) => ({ player, value: v?.[field] || 0 }))
+      .filter((e) => e.value > 0)
+      .sort((a, b) => b.value - a.value || a.player.localeCompare(b.player))
+      .slice(0, n);
+  }
+
   const doubles = sumMulti("double");
   const triples = sumMulti("triple");
   const quadras = sumMulti("quadra");
   const pentas = sumMulti("penta");
 
-  const topLine = (label, who, n) => {
-    if (!who || !n) return `<div class="text-slate-400">No top ${label.toLowerCase()} killer</div>`;
-    return `Top: <span class="font-semibold text-slate-700">${esc(who)}</span> <span class="text-slate-400">(${fmtInt(n)})</span>`;
-  };
+  const avgGoldEntries = [...goldAggByPlayer.entries()]
+    .map(([player, g]) => ({ player, value: g.cnt ? g.sum / g.cnt : 0 }))
+    .filter((e) => e.value > 0)
+    .sort((a, b) => b.value - a.value || a.player.localeCompare(b.player))
+    .slice(0, 5);
 
-  // streak text fix: 1 Game vs Games
   const streakUnit = plural(streakCount, "Game", "Games");
   const streakValue = `${fmtInt(streakCount)} ${streakUnit}`;
 
-  // ultra-clean wrapper: faint gradient + hairline border
   mountEl.innerHTML = `
     <div class="rounded-[28px] border border-slate-200/70 bg-gradient-to-b from-white/70 to-white/40">
       <div class="p-4 sm:p-6">
@@ -527,7 +570,7 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
           })}
           ${tile({
             label: streakIsWin ? "Currently on a Winning Streak" : "Currently on a Losing Streak",
-            value: streakValue, // ✅ 1 Game vs Games
+            value: streakValue,
           })}
           ${tile({
             label: "Last Updated",
@@ -535,26 +578,32 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
           })}
         </div>
 
-        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <!-- ✅ now ALL cards in this row show Top 5 (consistent) -->
+        <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           ${statCard({
             title: "Most Pink Wards in a Game",
             value: topPink.length ? fmtInt(topPink[0].value) : "—",
-            linesHTML: top3Lines(topPink, (v) => fmtInt(v)),
+            linesHTML: topPink.length ? topNLines(topPink, 5, (v) => fmtInt(v)) : "",
           })}
           ${statCard({
             title: "Highest Vision Score",
             value: topVision.length ? fmtInt(topVision[0].value) : "—",
-            linesHTML: top3Lines(topVision, (v) => fmtInt(v)),
+            linesHTML: topVision.length ? topNLines(topVision, 5, (v) => fmtInt(v)) : "",
           })}
           ${statCard({
             title: "Highest Damage Dealt",
             value: topDmg.length ? fmtInt(topDmg[0].value) : "—",
-            linesHTML: top3Lines(topDmg, (v) => fmtInt(v)),
+            linesHTML: topDmg.length ? topNLines(topDmg, 5, (v) => fmtInt(v)) : "",
           })}
           ${statCard({
             title: "Most Kills in a Game",
             value: topKills.length ? fmtInt(topKills[0].value) : "—",
-            linesHTML: top3Lines(topKills, (v) => fmtInt(v)),
+            linesHTML: topKills.length ? topNLines(topKills, 5, (v) => fmtInt(v)) : "",
+          })}
+          ${statCard({
+            title: "Avg Gold / Game",
+            value: avgGoldEntries.length ? fmtInt(avgGoldEntries[0].value) : "—",
+            linesHTML: avgGoldEntries.length ? topNLines(avgGoldEntries, 5, (v) => fmtInt(v)) : "",
           })}
         </div>
 
@@ -577,22 +626,30 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
           ${tile({
             label: "Double Kill",
             value: fmtInt(doubles.total),
-            subHTML: `<div class="text-[0.7rem]">${topLine("double", doubles.topPlayer, doubles.topVal)}</div>`,
+            subHTML: topMultiEntries("double", 5).length
+              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("double", 5), 5, (v) => fmtInt(v))}</div>`
+              : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Triple Kill",
             value: fmtInt(triples.total),
-            subHTML: `<div class="text-[0.7rem]">${topLine("triple", triples.topPlayer, triples.topVal)}</div>`,
+            subHTML: topMultiEntries("triple", 5).length
+              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("triple", 5), 5, (v) => fmtInt(v))}</div>`
+              : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Quadra Kill",
             value: fmtInt(quadras.total),
-            subHTML: `<div class="text-[0.7rem]">${topLine("quadra", quadras.topPlayer, quadras.topVal)}</div>`,
+            subHTML: topMultiEntries("quadra", 5).length
+              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("quadra", 5), 5, (v) => fmtInt(v))}</div>`
+              : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Penta Kill",
             value: fmtInt(pentas.total),
-            subHTML: `<div class="text-[0.7rem]">${topLine("penta", pentas.topPlayer, pentas.topVal)}</div>`,
+            subHTML: topMultiEntries("penta", 5).length
+              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("penta", 5), 5, (v) => fmtInt(v))}</div>`
+              : `<div class="text-slate-400">—</div>`,
           })}
         </div>
       </div>

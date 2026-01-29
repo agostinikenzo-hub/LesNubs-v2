@@ -118,11 +118,13 @@
               </div>
             </div>
 
-            <!-- In-page navigation (Team page) — updated order, removed dots -->
+            <!-- In-page navigation (Team page) — updated order -->
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-player-cards">Mini Cards</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-matchlist-section">Match List</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#summary-section">Summary</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#objective-impact-section">Total Player Impact</button>
+            <!-- ✅ NEW -->
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#death-map-section">Death Map</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-synergy-section">Team Synergy</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#objective-win-impact-section">Objective Win Impact</button>
             <button class="hover:text-[#ff8000] transition-colors" data-scroll="#lane-dynamics-section">Lane Dynamics</button>
@@ -217,6 +219,8 @@
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#team-matchlist-section">Match List</button>
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#summary-section">Summary</button>
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#objective-impact-section">Total Player Impact</button>
+          <!-- ✅ NEW -->
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#death-map-section">Death Map</button>
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#team-synergy-section">Team Synergy</button>
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#objective-win-impact-section">Objective Win Impact</button>
           <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lane-dynamics-section">Lane Dynamics</button>
@@ -353,6 +357,11 @@
         <!-- 7) LANE DYNAMICS -->
         <section id="lane-dynamics-section" class="mb-8">
           <div id="lane-dynamics" class="dashboard-card"></div>
+        </section>
+
+        <!-- ✅ NEW (at the end, as requested): DEATH MAP -->
+        <section id="death-map-section" class="mb-8">
+          <div id="death-map" class="dashboard-card"></div>
         </section>
 
         <!-- Keep anchor for later -->

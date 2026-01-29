@@ -272,7 +272,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
     return;
   }
 
-  const UNLOCK_ROLE_GAMES = Number.isFinite(opts.unlockRoleGames) ? opts.unlockRoleGames : 25;
+  const UNLOCK_ROLE_GAMES = Number.isFinite(opts.unlockRoleGames) ? opts.unlockRoleGames : 99;
 
   // ✅ NEW: roster filtering (recommended)
   // pass opts.roster: ROSTER_ORDER

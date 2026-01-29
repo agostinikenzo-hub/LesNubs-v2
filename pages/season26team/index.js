@@ -12,6 +12,9 @@ import { mountObjectivesWinImpactCard } from "../../components/objectivesWinImpa
 import { mountTeamSynergyCard } from "../../components/teamSynergyCard.js";
 import { mountLaneDynamicsCard } from "../../components/laneDynamicsCard.js";
 
+// ✅ Death map
+import { mountDeathMapCard } from "../../components/deathMapCard.js";
+
 import { loadTimelineRows, SEASON26_TIMELINE_CSV } from "../../core/timelineData.js";
 
 function byId(id) {
@@ -103,12 +106,25 @@ async function main() {
   const matchlistEl = byId("team-matchlist");
   const summaryEl = byId("team-summary");
   const tpiEl = byId("objective-impact");
+
+  // ✅ New death map mount point
+  const deathMapEl = byId("death-map");
+
   const teamSynergyEl = byId("team-synergy");
   const objEl = byId("objective-win-impact");
   const laneDynEl = byId("lane-dynamics");
 
   // ===== Ensure visual order on page (if same parent) =====
-  reorderIfSameParent([miniCardsEl, matchlistEl, summaryEl, tpiEl, teamSynergyEl, objEl, laneDynEl]);
+  reorderIfSameParent([
+    miniCardsEl,
+    matchlistEl,
+    summaryEl,
+    tpiEl,
+    deathMapEl,     // ✅ place it right after TPI
+    teamSynergyEl,
+    objEl,
+    laneDynEl,
+  ]);
 
   setStatus("Loading Team (5-stack) data…");
 
@@ -122,6 +138,7 @@ async function main() {
   loading(matchlistEl, "Match List");
   loading(summaryEl, "Team Snapshot");
   loading(tpiEl, "Total Player Impact");
+  loading(deathMapEl, "Death Map"); // ✅
   loading(teamSynergyEl, "Team Synergy & Identity");
   loading(objEl, "Objective Win Impact");
   loading(laneDynEl, "Lane Dynamics & Playmakers");
@@ -141,7 +158,7 @@ async function main() {
   // Raw-ish rows for compute engines
   const rawRows = rows.map((r) => r?._raw ?? r);
 
-  // ===== Load timeline rows (for Lane Dynamics) =====
+  // ===== Load timeline rows (for Lane Dynamics + Death Map) =====
   let timelineRows = [];
   try {
     timelineRows = await loadTimelineRows({ csvUrl: SEASON26_TIMELINE_CSV });
@@ -192,12 +209,25 @@ async function main() {
     "[Team] mountTpiCard failed"
   );
 
+  // ===== 4b) Death Map (async) ✅ =====
+  await safeAsyncMount(
+    deathMapEl,
+    async () => {
+      await mountDeathMapCard(deathMapEl, timelineRows, {
+        title: "Death Map (Team / 5-stack)",
+        subtitle: "Heatmap of where deaths happen (timeline CHAMPION_KILL positions).",
+        roster: ROSTER,
+      });
+    },
+    "[Team] mountDeathMapCard failed"
+  );
+
   // ===== 5) Team Synergy (async) =====
   await safeAsyncMount(
     teamSynergyEl,
     async () => {
       await mountTeamSynergyCard(teamSynergyEl, rawRows, {
-        unlockRoleGames: 25,
+        unlockRoleGames: 99,
         timelineRows, // ready for phase 2
         debug: false,
       });
@@ -222,7 +252,7 @@ async function main() {
     () => {
       mountLaneDynamicsCard(laneDynEl, rawRows, timelineRows, {
         roster: ROSTER,
-        unlockGames: 0,        // set to 25 when you want gating live
+        unlockGames: 0, // set to 25 when you want gating live
         initialPhase: "early",
       });
     },
@@ -240,6 +270,7 @@ main().catch((err) => {
     "team-matchlist",
     "team-summary",
     "objective-impact",
+    "death-map",          // ✅
     "team-synergy",
     "objective-win-impact",
     "lane-dynamics",

@@ -138,6 +138,33 @@ function buildPlayerDetail(p, ctx) {
   `;
 }
 
+function buildSampleCutoffPill(players, meta, cfg) {
+  const maxGames = Math.max(0, ...players.map((p) => Number(p.games || 0)));
+
+  // Prefer the actual computed cutoff coming from core (most accurate).
+  // Fallback to config formula if meta missing.
+  const cutoff =
+    typeof meta?.minGamesFull === "number" && meta.minGamesFull > 0
+      ? meta.minGamesFull
+      : Math.max(cfg.MIN_GAMES_FLOOR, Math.round(maxGames * cfg.SHRINK_FRACTION_OF_MAX));
+
+  const title = `Low-sample cutoff: <${cutoff} games is "low sample" and gets shrunk toward the mean.\nMax games in scope: ${maxGames}.`;
+
+  return `
+    <div class="shrink-0">
+      <div
+        class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate-200 bg-white/70 text-[0.7rem] font-semibold text-slate-700"
+        title="${escapeHTML(title)}">
+        <span class="text-slate-400 font-semibold">Cutoff</span>
+        <span class="tabular-nums">${cutoff}g</span>
+        <span class="opacity-30">/</span>
+        <span class="text-slate-400 font-semibold">Max</span>
+        <span class="tabular-nums">${maxGames}g</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderCardInner(mount, players, meta, opts) {
   const title = opts.title || "Total Player Impact";
   const subtitle =
@@ -263,11 +290,16 @@ function renderCardInner(mount, players, meta, opts) {
     ? `<div class="px-4 pt-2 text-[0.7rem] text-slate-500">Trend reference: <span class="font-semibold">${escapeHTML(meta.lastMatchId)}</span></div>`
     : "";
 
+  const cutoffPill = buildSampleCutoffPill(players, meta, cfg);
+
   mount.innerHTML = `
     <div class="card-header">
-      <div>
-        <div class="card-title">${escapeHTML(title)}</div>
-        <div class="card-subtitle">${escapeHTML(subtitle)}</div>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="card-title">${escapeHTML(title)}</div>
+          <div class="card-subtitle">${escapeHTML(subtitle)}</div>
+        </div>
+        ${cutoffPill}
       </div>
     </div>
 

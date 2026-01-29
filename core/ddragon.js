@@ -50,6 +50,14 @@ export async function getChampionIdMap() {
 
   return champMapPromise;
 }
+// /core/ddragon.js
+// ...keep your existing code...
+
+export async function minimapUrl(mapId = 11) {
+  const ver = await getLatestDDragonVersion();
+  // NOTE: this URL works on some versions/environments, but we still do fallback logic in the card
+  return `https://ddragon.leagueoflegends.com/cdn/${ver}/img/map/map${mapId}.png`;
+}
 
 export async function championSquareUrl(champName) {
   const { ver, map } = await getChampionIdMap();
