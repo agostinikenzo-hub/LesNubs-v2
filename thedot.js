@@ -1,6 +1,18 @@
 /* thedot.js — The CAL (Season 26 + Year Toggle)
    + Flex/Team vs Solo coloring
    + Bins grouped by meaning (Mixed / Flex only / Solo only / No game)
+
+   UI upgrades:
+   - Remove weekday header row "M T W T F S S" (redundant)
+   - Add compact legend row explaining dot meaning (Flex / Solo / Both)
+
+   NEW:
+   - Longest streak of consecutive DAYS with ≥1 game
+   - Longest streak of consecutive WEEKS (Mon-start) where ≥1 game in the week
+   - Subtle aura/glow on dots belonging to the LONGEST streaks (works even if ongoing)
+   - Compact streak pills in legend row
+
+   NOTE: Your palette: BLUE = Solo, ORANGE = Flex, BOTH = split dot
 */
 
 (() => {
@@ -72,6 +84,418 @@
 
   document.addEventListener("DOMContentLoaded", () => mountCAL());
 
+  /* =========================
+     UI helpers (legend + hide weekday header)
+  ========================= */
+
+  function injectCalUiStylesOnce() {
+    if (document.getElementById("s26-cal-ui-style")) return;
+
+    const style = document.createElement("style");
+    style.id = "s26-cal-ui-style";
+    style.textContent = `
+      /* Compact legend row above the calendar grid */
+      #cal-dot-legend{
+        display:flex;
+        align-items:center;
+        gap:.55rem;
+        margin: .2rem 0 .65rem 0;
+        flex-wrap: wrap;
+        color: rgba(100,116,139,0.92);
+        font-size: .78rem;
+        font-weight: 800;
+      }
+      #cal-dot-legend .cal-legend-item{
+        display:inline-flex;
+        align-items:center;
+        gap:.45rem;
+        padding: .26rem .52rem;
+        border-radius: 999px;
+        border: 1px solid rgba(226,232,240,0.95);
+        background: rgba(255,255,255,0.55);
+        line-height: 1;
+        white-space: nowrap;
+      }
+      #cal-dot-legend .cal-legend-dot{
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display:inline-block;
+        border: 1px solid rgba(15,23,42,0.14);
+        box-shadow: 0 1px 0 rgba(15,23,42,0.03);
+        flex: 0 0 auto;
+      }
+
+      /* ✅ Your palette mapping: BLUE = Solo, ORANGE = Flex */
+      #cal-dot-legend .cal-legend-dot.solo { background: rgba(59,130,246,0.92); }  /* Solo (blue) */
+      #cal-dot-legend .cal-legend-dot.flex { background: rgba(249,115,22,0.92); }  /* Flex / Team (orange) */
+      #cal-dot-legend .cal-legend-dot.mixed{
+        background: linear-gradient(135deg, rgba(249,115,22,0.92) 0 50%, rgba(59,130,246,0.92) 50% 100%);
+      }
+
+      /* Streak pills */
+      #cal-dot-legend .cal-legend-item.is-streak{
+        border-color: rgba(249,115,22,0.18);
+        background: rgba(249,115,22,0.06);
+        color: rgba(15,23,42,0.86);
+      }
+      #cal-dot-legend .cal-legend-item.is-streak .muted{
+        color: rgba(100,116,139,0.92);
+        font-weight: 900;
+      }
+
+      /* Aura/glow on streak dots (won't change layout) */
+      .day-dot{ position: relative; }
+      .day-dot--streak-day::before{
+        content:"";
+        position:absolute;
+        inset:-3px;
+        border-radius: 999px;
+        pointer-events:none;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(249,115,22,0.28) 0%,
+          rgba(249,115,22,0.18) 45%,
+          rgba(249,115,22,0.00) 70%
+        );
+      }
+      .day-dot--streak-week::after{
+        content:"";
+        position:absolute;
+        inset:-2px;
+        border-radius: 999px;
+        pointer-events:none;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(59,130,246,0.20) 0%,
+          rgba(59,130,246,0.10) 45%,
+          rgba(59,130,246,0.00) 72%
+        );
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function ensureDotLegendRow() {
+    const calendarWrap = document.getElementById("cal-calendar");
+    const grid = document.getElementById("cal-grid");
+    if (!calendarWrap || !grid) return;
+
+    injectCalUiStylesOnce();
+
+    let legend = document.getElementById("cal-dot-legend");
+    if (!legend) {
+      legend = document.createElement("div");
+      legend.id = "cal-dot-legend";
+      legend.setAttribute("aria-label", "Calendar dot legend");
+
+      legend.innerHTML = `
+        <span class="cal-legend-item" title="Days with Flex/Team games only">
+          <span class="cal-legend-dot flex"></span>
+          Flex / Team
+        </span>
+        <span class="cal-legend-item" title="Days with Solo games only">
+          <span class="cal-legend-dot solo"></span>
+          Solo
+        </span>
+        <span class="cal-legend-item" title="Days with both Flex/Team and Solo games">
+          <span class="cal-legend-dot mixed"></span>
+          Both
+        </span>
+
+        <span class="cal-legend-item is-streak" id="cal-streak-days" title="Longest streak of consecutive days with ≥1 game">
+          🔥 <span class="muted">—</span>
+        </span>
+        <span class="cal-legend-item is-streak" id="cal-streak-weeks" title="Longest streak of consecutive weeks (Mon-start) with ≥1 game in the week">
+          ✦ <span class="muted">—</span>
+        </span>
+      `;
+
+      // Insert right above the grid
+      grid.parentNode.insertBefore(legend, grid);
+    }
+  }
+
+  function updateStreakLegend(bestDayLen, bestWeekLen) {
+    const dEl = document.getElementById("cal-streak-days");
+    const wEl = document.getElementById("cal-streak-weeks");
+    if (dEl) dEl.innerHTML = `🔥 <span class="muted">${bestDayLen ? `${bestDayLen} day${bestDayLen === 1 ? "" : "s"}` : "0 days"}</span>`;
+    if (wEl) wEl.innerHTML = `✦ <span class="muted">${bestWeekLen ? `${bestWeekLen} week${bestWeekLen === 1 ? "" : "s"}` : "0 weeks"}</span>`;
+  }
+
+  // Stronger weekday header removal: catches containers that render as "MTWTFSS" OR "M T W T F S S"
+  function hideWeekdayHeaderRow() {
+    const normalizeLetters = (t) =>
+      String(t || "")
+        .toUpperCase()
+        .replace(/[^A-Z]/g, ""); // keep letters only
+
+    const patterns = new Set([
+      "MTWTFSS", // classic
+      "MDMDFSS", // DE-ish if someone used M D M D F S S
+      "LMMJVSD", // FR-ish (Lu Ma Me Je Ve Sa Di) just in case
+    ]);
+
+    // common selectors (best case)
+    const quick = [
+      "#cal-weekdays",
+      ".cal-weekdays",
+      ".weekday-row",
+      ".dow-row",
+      ".calendar-weekdays",
+      "[data-cal-weekdays='1']",
+    ];
+    for (const sel of quick) {
+      const el = document.querySelector(sel);
+      if (el && el.dataset?.hiddenWeekdays !== "1") {
+        el.style.display = "none";
+        el.dataset.hiddenWeekdays = "1";
+      }
+    }
+
+    // scan: hide elements whose letter-only text matches a weekday strip
+    const all = document.querySelectorAll("body *");
+    for (const el of all) {
+      if (!el || el.dataset?.hiddenWeekdays === "1") continue;
+
+      // don't hide big containers that include dots
+      if (el.querySelector && (el.querySelector(".dots-grid") || el.querySelector(".day-dot") || el.querySelector("#cal-grid"))) {
+        continue;
+      }
+
+      const letters = normalizeLetters(el.textContent);
+      if (!letters) continue;
+
+      // exact weekday row in one element
+      if (patterns.has(letters)) {
+        el.style.display = "none";
+        if (el.dataset) el.dataset.hiddenWeekdays = "1";
+        continue;
+      }
+
+      // sometimes it's "MON TUE..." etc, ignore
+      // sometimes each day is its own element; hide parent if it looks like a 7-item weekday strip
+      if (letters.length === 7 && patterns.has(letters)) {
+        el.style.display = "none";
+        if (el.dataset) el.dataset.hiddenWeekdays = "1";
+      }
+    }
+  }
+
+  function startWeekdayHeaderGuard() {
+    if (window.__S26_CAL_WEEKDAY_GUARD__) return;
+    window.__S26_CAL_WEEKDAY_GUARD__ = true;
+
+    hideWeekdayHeaderRow();
+    setTimeout(hideWeekdayHeaderRow, 50);
+    setTimeout(hideWeekdayHeaderRow, 250);
+
+    const obs = new MutationObserver(() => {
+      hideWeekdayHeaderRow();
+    });
+
+    obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+  }
+
+  /* =========================
+     Streak logic (days + weeks)
+  ========================= */
+
+  function isPlayedDay(data, dateKey) {
+    const t = (data?.total?.get?.(dateKey) || 0) + 0;
+    return t > 0;
+  }
+
+  function mondayStart(d) {
+    const x = startOfDay(d);
+    const idx = mondayIndex(x); // 0..6 (Mon..Sun)
+    x.setDate(x.getDate() - idx);
+    return x;
+  }
+
+  function weekKeyFromDateKey(dateKey) {
+    // dateKey: YYYY-MM-DD
+    const d = new Date(dateKey + "T00:00:00");
+    return toISODateKey(mondayStart(d));
+  }
+
+  function computeBestDayStreak(data, start, end) {
+    const s = startOfDay(start);
+    const e = startOfDay(end);
+
+    let bestLen = 0;
+    let bestStartKey = "";
+    let bestEndKey = "";
+
+    let runLen = 0;
+    let runStartKey = "";
+
+    let curLen = 0;
+    let curStartKey = "";
+
+    for (let d = new Date(s); d.getTime() <= e.getTime(); d.setDate(d.getDate() + 1)) {
+      const key = toISODateKey(d);
+      const played = isPlayedDay(data, key);
+
+      // current (ongoing-to-end) tracking
+      if (played) {
+        if (curLen === 0) curStartKey = key;
+        curLen += 1;
+      } else {
+        curLen = 0;
+        curStartKey = "";
+      }
+
+      // best run tracking
+      if (played) {
+        if (runLen === 0) runStartKey = key;
+        runLen += 1;
+      } else {
+        if (runLen > bestLen) {
+          bestLen = runLen;
+          bestStartKey = runStartKey;
+          bestEndKey = toISODateKey(new Date(d.getTime() - 86400000));
+        }
+        runLen = 0;
+        runStartKey = "";
+      }
+    }
+
+    // finalize
+    if (runLen > bestLen) {
+      bestLen = runLen;
+      bestStartKey = runStartKey;
+      bestEndKey = toISODateKey(end);
+    }
+
+    return {
+      best: { len: bestLen, startKey: bestStartKey, endKey: bestEndKey },
+      current: { len: curLen, startKey: curStartKey, endKey: curLen ? toISODateKey(end) : "" },
+    };
+  }
+
+  function computeBestWeekStreak(data, start, end) {
+    const s = startOfDay(start);
+    const e = startOfDay(end);
+
+    // weekStartKey -> played?
+    const weekPlayed = new Map();
+
+    for (let d = new Date(s); d.getTime() <= e.getTime(); d.setDate(d.getDate() + 1)) {
+      const key = toISODateKey(d);
+      if (!isPlayedDay(data, key)) continue;
+      const wk = toISODateKey(mondayStart(d));
+      weekPlayed.set(wk, true);
+    }
+
+    const ws = mondayStart(s);
+    const we = mondayStart(e);
+
+    let bestLen = 0;
+    let bestStartWk = "";
+    let bestEndWk = "";
+
+    let runLen = 0;
+    let runStartWk = "";
+
+    let curLen = 0;
+    let curStartWk = "";
+
+    for (let w = new Date(ws); w.getTime() <= we.getTime(); w.setDate(w.getDate() + 7)) {
+      const wk = toISODateKey(w);
+      const played = weekPlayed.get(wk) === true;
+
+      // current tracking (ending at last week)
+      if (played) {
+        if (curLen === 0) curStartWk = wk;
+        curLen += 1;
+      } else {
+        curLen = 0;
+        curStartWk = "";
+      }
+
+      // best tracking
+      if (played) {
+        if (runLen === 0) runStartWk = wk;
+        runLen += 1;
+      } else {
+        if (runLen > bestLen) {
+          bestLen = runLen;
+          bestStartWk = runStartWk;
+          bestEndWk = toISODateKey(new Date(w.getTime() - 7 * 86400000));
+        }
+        runLen = 0;
+        runStartWk = "";
+      }
+    }
+
+    if (runLen > bestLen) {
+      bestLen = runLen;
+      bestStartWk = runStartWk;
+      bestEndWk = toISODateKey(we);
+    }
+
+    return {
+      best: { len: bestLen, startWk: bestStartWk, endWk: bestEndWk },
+      current: { len: curLen, startWk: curStartWk, endWk: curLen ? toISODateKey(we) : "" },
+      weekPlayed,
+    };
+  }
+
+  function buildDateKeySet(startKey, endKey) {
+    const out = new Set();
+    if (!startKey || !endKey) return out;
+    const s = new Date(startKey + "T00:00:00");
+    const e = new Date(endKey + "T00:00:00");
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return out;
+    for (let d = new Date(s); d.getTime() <= e.getTime(); d.setDate(d.getDate() + 1)) {
+      out.add(toISODateKey(d));
+    }
+    return out;
+  }
+
+  function buildWeekKeySet(startWk, endWk) {
+    const out = new Set();
+    if (!startWk || !endWk) return out;
+    const s = new Date(startWk + "T00:00:00");
+    const e = new Date(endWk + "T00:00:00");
+    if (isNaN(s.getTime()) || isNaN(e.getTime())) return out;
+    for (let w = new Date(s); w.getTime() <= e.getTime(); w.setDate(w.getDate() + 7)) {
+      out.add(toISODateKey(w));
+    }
+    return out;
+  }
+
+  function applyStreakDecorations(data) {
+    const today = startOfDay(new Date());
+    const { activeStart, activeEnd } = getActiveWindow(today);
+
+    const dayStreak = computeBestDayStreak(data, activeStart, activeEnd);
+    const weekStreak = computeBestWeekStreak(data, activeStart, activeEnd);
+
+    updateStreakLegend(dayStreak.best.len, weekStreak.best.len);
+
+    const bestDayKeys = buildDateKeySet(dayStreak.best.startKey, dayStreak.best.endKey);
+    const bestWeekKeys = buildWeekKeySet(weekStreak.best.startWk, weekStreak.best.endWk);
+
+    // Apply glow classes to dots
+    const dots = document.querySelectorAll(".day-dot[data-date]");
+    dots.forEach((dot) => {
+      const key = dot.dataset.date || "";
+      if (!key) return;
+
+      // day streak glow (only if played)
+      const played = (Number(dot.dataset.count || 0) || 0) > 0;
+      dot.classList.toggle("day-dot--streak-day", played && bestDayKeys.has(key));
+
+      // week streak glow (only if played)
+      const wk = weekKeyFromDateKey(key);
+      dot.classList.toggle("day-dot--streak-week", played && bestWeekKeys.has(wk));
+    });
+  }
+
+  /* =========================
+     Mount
+  ========================= */
+
   async function mountCAL() {
     const statusEl = document.getElementById("cal-status");
     const lockedWrap = document.getElementById("cal-locked");
@@ -83,6 +507,10 @@
     const btnViewLabel = document.getElementById("btn-view-label");
 
     if (!statusEl || !calendarWrap || !splitWrap || !btnView || !btnViewLabel) return;
+
+    // UI upgrades (static)
+    ensureDotLegendRow();
+    startWeekdayHeaderGuard();
 
     // Guard: prevent multiple mounts double-binding the button
     if (btnView.dataset.bound === "1") return;
@@ -181,6 +609,9 @@
       lockedWrap?.classList.add("hidden");
       calendarWrap.classList.remove("hidden");
 
+      ensureDotLegendRow();
+      hideWeekdayHeaderRow();
+
       setToggleEnabled(true);
       statusEl.textContent = `Loading match days… (${year})`;
       STATE.isLoading = true;
@@ -219,6 +650,11 @@
       // Ensure split panel hidden on reload
       splitWrap.classList.add("hidden");
       STATE.isLoading = false;
+
+      // Apply streak UI + aura
+      applyStreakDecorations(STATE.matchesPerDay);
+
+      hideWeekdayHeaderRow();
     }
 
     function setText(id, text) {
@@ -324,6 +760,9 @@
     if (!grid) return;
     grid.innerHTML = "";
 
+    ensureDotLegendRow();
+    hideWeekdayHeaderRow();
+
     const today = startOfDay(new Date());
     const { activeStart, activeEnd } = getActiveWindow(today);
 
@@ -410,6 +849,11 @@
       monthCell.appendChild(dots);
       grid.appendChild(monthCell);
     }
+
+    hideWeekdayHeaderRow();
+
+    // After rendering dots, apply aura based on longest streaks
+    applyStreakDecorations(data);
   }
 
   /* =========================
@@ -526,6 +970,12 @@
 
     calendarWrap.classList.remove("hidden");
     splitWrap.classList.add("hidden");
+
+    ensureDotLegendRow();
+    hideWeekdayHeaderRow();
+
+    // re-apply streak aura (dots moved back)
+    if (STATE.matchesPerDay) applyStreakDecorations(STATE.matchesPerDay);
 
     if (prefersReduced) return;
 

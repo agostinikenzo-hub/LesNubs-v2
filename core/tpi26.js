@@ -12,10 +12,10 @@ export const TPI26_DEFAULT = {
   OBJ_PART_WEIGHTS: {
     Dragon: 0.25,
     Herald: 0.10,
-    Baron: 0.25,
+    Baron: 0.30,
     Tower: 0.20,
-    Atakhan: 0.10,
-    VoidGrub: 0.10,
+    //Atakhan: 0.00,
+    VoidGrub: 0.15,
   },
 
   ROLE_PILLAR_WEIGHTS: {

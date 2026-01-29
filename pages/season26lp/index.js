@@ -31,7 +31,7 @@ const ROSTER_ORDER = [
 ];
 
 // 🔒 set to >0 to show locked shell; 0 = live
-const PRIZE_RACE_UNLOCK_IN_DAYS = 90;
+const PRIZE_RACE_UNLOCK_IN_DAYS = 30;
 
 function setStatus(text) {
   const el = document.getElementById("status");
@@ -241,7 +241,7 @@ async function main() {
           csvUrl: LP26_CSV_URL,
           rosterOrder: ROSTER_ORDER,
           title: "LP Timeline (Rank over time)",
-          unlockInDays: 30, // 🔒 set to e.g. 14 later if you want it gated
+          unlockInDays: 0, // 🔒 set to e.g. 14 later if you want it gated
           defaultMode: "BOTH", // BOTH | SOLO | FLEX
           defaultFocus: "", // "" = all players
         });
@@ -260,7 +260,7 @@ async function main() {
           mountUnlockableCard(prizeEl, {
             title: "Prize Pool — Race",
             unlockInDays: PRIZE_RACE_UNLOCK_IN_DAYS,
-            note: "Juicy Prizes only for the best, presented by BRAWNDO - Brawndo has what Nübs crave!",
+            note: "Juicy Prizes only for the best, presented by BRAWNDO - Brawndo has what Nübs crave! 4500 RP Prize Pool to be won.!!! TOP 3 split 60/20/20! Every Queue counts: Team, Solo/Duo, Other Flex (1–4)! Donate today and make Les Nübs great again!!!",
             pill: "Locked Feature",
           });
           return;
@@ -293,7 +293,7 @@ async function main() {
 
         // ✅ Prize settings
         PRIZE_POOL_RP: 4500,
-        PAYOUT_SPLIT: [0.5, 0.2, 0.2], // top 4
+        PAYOUT_SPLIT: [0.6, 0.2, 0.2], // top 4
       },
     }
   );

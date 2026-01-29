@@ -160,7 +160,13 @@ function buildSeries(rows) {
 
 /**
  * Rank parsing (use currentRank, NOT rankIndex)
- * Accepts: "SILVER IV", "BRONZE I", "PLATINUM II", "EMERALD IV", "DIAMOND I", "UNRANKED"
+ * Accepts:
+ * - "SILVER IV"
+ * - "SILVER IV · 17 LP"
+ * - "GOLD I | 55 LP"
+ * - "PLATINUM II · 33 LP"
+ * - "MASTER"
+ * - "UNRANKED"
  */
 const TIER_ALIASES = {
   IRON: "IRON",
@@ -181,11 +187,22 @@ const TIER_ALIASES = {
 const TIER_ORDER = ["IRON", "BRONZE", "SILVER", "GOLD", "PLAT", "EMER", "DIAM", "MASTER", "GRANDMASTER", "CHALLENGER"];
 const DIV_ORDER = { IV: 0, III: 1, II: 2, I: 3 };
 
-function parseRankLabel(label) {
-  const s = String(label || "").trim().toUpperCase();
-  if (!s || s.includes("UNRANKED")) return null;
+// ✅ strip any "· 15 LP" / "15 LP" noise so we never double-print LP
+function cleanRankText(label) {
+  const up = String(label || "").trim().toUpperCase();
+  if (!up) return "";
+  if (up.includes("UNRANKED")) return "UNRANKED";
+  return up
+    .replace(/[·|]/g, " ")
+    .replace(/\b\d+\s*LP\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-  // Expected shapes: "SILVER IV", "PLATINUM II", "DIAMOND I"
+function parseRankLabel(label) {
+  const s = cleanRankText(label);
+  if (!s || s === "UNRANKED") return null;
+
   const parts = s.split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
 
@@ -198,10 +215,10 @@ function parseRankLabel(label) {
 
   // Division may be absent for MASTER+
   const divRaw = parts[1] || null;
-  const divIdx = divRaw && DIV_ORDER[divRaw] != null ? DIV_ORDER[divRaw] : 4; // 4 = “above I” for tiers w/out div
+  const divIdx = divRaw && DIV_ORDER[divRaw] != null ? DIV_ORDER[divRaw] : 4;
 
   const absIdx = tierIdx * 4 + Math.min(divIdx, 4);
-  return { tierKey, tierIdx, divIdx, absIdx };
+  return { tierKey, tierIdx, divIdx, absIdx, divRaw };
 }
 
 function isRankedRow(row) {
@@ -212,9 +229,6 @@ function isRankedRow(row) {
 /**
  * Promotion-safe points:
  * absIdx (tier+division) * 100 + LP
- * -> Bronze I 67 => (BRONZE idx=1, I=3) absIdx=1*4+3=7 => 700+67=767
- * -> Silver IV 17 => (SILVER idx=2, IV=0) absIdx=2*4+0=8 => 800+17=817
- * delta = +50 (correct, not -50)
  */
 function rankPts(row) {
   const p = parseRankLabel(row?.currentRank);
@@ -306,6 +320,43 @@ function lastPointsEvent(series) {
 }
 
 /**
+ * ✅ Sticky "Last change" date:
+ * If rank/LP hasn't changed, keep showing the date of the last rank/LP change.
+ * (W/L changes do NOT affect this.)
+ */
+function stickyLastChangeDate(series) {
+  if (!Array.isArray(series) || series.length === 0) return "";
+
+  // Find last index where rankPts changed OR placed happened
+  for (let i = series.length - 1; i >= 1; i--) {
+    const prev = series[i - 1];
+    const cur = series[i];
+
+    const prevRanked = isRankedRow(prev);
+    const curRanked = isRankedRow(cur);
+
+    if (!prevRanked && curRanked) {
+      return cur?.snapshotDateStr || "";
+    }
+
+    const a = rankPts(prev);
+    const b = rankPts(cur);
+
+    if (a != null && b != null && a !== b) {
+      return cur?.snapshotDateStr || "";
+    }
+
+    // Optional: if one side is ranked and the other isn't (other than placed), treat as change too
+    if (prevRanked !== curRanked) {
+      return cur?.snapshotDateStr || "";
+    }
+  }
+
+  // No rank/LP change ever -> just show latest snapshot date
+  return series[series.length - 1]?.snapshotDateStr || "";
+}
+
+/**
  * Sticky W/L/WR delta:
  * - If LP has NOT changed recently but W/L changed, show the latest W/L change since last LP-change.
  * - If nothing changed since last LP-change, fall back to that LP-change interval.
@@ -313,11 +364,10 @@ function lastPointsEvent(series) {
 function stickyWLDelta(series, pointsEvent) {
   if (!Array.isArray(series) || series.length < 2) return null;
   if (!pointsEvent) return null;
-  if (pointsEvent.type === "PLACED") return null; // avoid weird first-placement deltas
+  if (pointsEvent.type === "PLACED") return null;
 
   const startIdx = pointsEvent.idx;
 
-  // 1) Search after last pointsEvent for the most recent interval with W/L or WR change
   for (let i = series.length - 1; i >= Math.max(1, startIdx + 1); i--) {
     const a = series[i - 1];
     const b = series[i];
@@ -340,7 +390,6 @@ function stickyWLDelta(series, pointsEvent) {
     if (changed) return { dW, dL, dWR };
   }
 
-  // 2) Fall back to the pointsEvent interval itself
   const a = pointsEvent.prevRow;
   const b = pointsEvent.curRow;
 
@@ -359,12 +408,25 @@ function stickyWLDelta(series, pointsEvent) {
   return { dW, dL, dWR };
 }
 
+// ✅ Base rank label without LP in it (prevents "…15 LP · 15 LP")
+function rankBaseLabel(row) {
+  if (!row) return "—";
+  const s = cleanRankText(row?.currentRank);
+  if (!s || s === "UNRANKED") return "UNRANKED";
+
+  const parts = s.split(/\s+/).filter(Boolean);
+  const tierRaw = parts[0] || "—";
+  const divRaw = parts[1] || null;
+  if (divRaw && DIV_ORDER[divRaw] != null) return `${tierRaw} ${divRaw}`;
+  return tierRaw; // MASTER+ etc
+}
+
 function rankLabel(row) {
   if (!row) return "—";
   if (!isRankedRow(row)) return "UNRANKED";
-  const rank = String(row.currentRank || "").trim() || "—";
+  const base = rankBaseLabel(row);
   const lp = clampLp(row?.lp);
-  return `${esc(rank)} · ${lp} LP`;
+  return `${esc(base)} · ${lp} LP`;
 }
 
 function rankLineHTML(row, pointsEvent, wlDelta) {
@@ -580,11 +642,13 @@ export async function mountLpMiniModule({
       const row = series.length ? series[series.length - 1] : null;
 
       const milestoneChip = persistentMilestoneChip(series);
-      const pointsEvent = lastPointsEvent(series); // sticky LP delta anchor
-      const wlDelta = stickyWLDelta(series, pointsEvent); // sticky W/L delta until next LP change
+      const pointsEvent = lastPointsEvent(series);
+      const wlDelta = stickyWLDelta(series, pointsEvent);
+
+      // ✅ sticky date (last rank/LP change)
+      const dateLabel = stickyLastChangeDate(series);
 
       const block = el("div", "rounded-xl border border-slate-200 bg-white px-2.5 py-2");
-      const dateLabel = row?.snapshotDateStr || "";
 
       const chipRow = milestoneChip ? `<div class="mt-1 flex flex-wrap gap-1.5">${milestoneChip}</div>` : "";
 

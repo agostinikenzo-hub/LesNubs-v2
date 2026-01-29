@@ -2,7 +2,7 @@
 import { computeTpi26 } from "./tpi26.js";
 
 export const PRIZE_RACE_DEFAULT = {
-  WEIGHTS: { TEAM: 0.7, SOLO: 0.2, FLEX: 0.1 },
+  WEIGHTS: { TEAM: 0.7, SOLO: 0.1, FLEX: 0.2 },
 
   // min games per queue to “count” that queue in scoring
   TEAM_MIN_GAMES: 10,
@@ -16,7 +16,7 @@ export const PRIZE_RACE_DEFAULT = {
   INCLUDE_ROSTER_WITH_ZERO: true,
 
   // bonus tuning
-  PENTA_Z_COEFF: 0.18, // bonus = coeff * z(pentaRate) * 10
+  PENTA_Z_COEFF: 0.10, // bonus = coeff * z(pentaRate) * 10
 };
 
 function toNum(v) {
