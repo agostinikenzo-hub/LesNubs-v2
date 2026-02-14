@@ -31,7 +31,7 @@ const ROSTER_ORDER = [
 ];
 
 // 🔒 set to >0 to show locked shell; 0 = live
-const PRIZE_RACE_UNLOCK_IN_DAYS = 30;
+const PRIZE_RACE_UNLOCK_IN_DAYS = 0;
 
 function setStatus(text) {
   const el = document.getElementById("status");

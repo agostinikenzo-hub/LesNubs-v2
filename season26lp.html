@@ -52,7 +52,7 @@
 
               <div
                 id="season-menu-panel"
-                class="hidden absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                class="hidden z-50 absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
                 role="menu"
                 aria-labelledby="season-menu-btn"
               >
@@ -60,6 +60,12 @@
 
                 <a
                   href="index.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Overview</a
+                >
+                <a
+                  href="season26team.html"
                   class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
                   role="menuitem"
                   >Team (5-stack)</a
@@ -84,7 +90,7 @@
                   style="background: rgba(231,175,178,0.20); color:#ff8000;"
                   role="menuitem"
                 >
-                  LP (Ranks) — Current
+                  LP Tracker — Current
                 </a>
 
                 <a
@@ -93,6 +99,18 @@
                   role="menuitem"
                   >The CAL</a
                 >
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Archive</div>
+
+                <a
+                  href="season-25.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  S25 (Archive)
+                </a>
               </div>
             </div>
 
@@ -150,7 +168,7 @@
 
               <div
                 id="more-menu-panel"
-                class="hidden absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                class="hidden z-50 absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
                 role="menu"
                 aria-labelledby="more-menu-btn"
               >
@@ -172,6 +190,15 @@
                   role="menuitem"
                   >Version Tracker</a
                 >
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <a
+                  href="privacy.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                  >Privacy Notice</a
+                >
               </div>
             </div>
           </div>
@@ -192,11 +219,17 @@
         <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
           <div class="py-2">
             <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
-            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
+            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Overview</a>
+            <a href="season26team.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
             <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
             <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
-            <a href="season26lp.html" class="py-1 block font-semibold" style="color:#ff8000;">LP (Ranks) — Current</a>
+            <a href="season26lp.html" class="py-1 block font-semibold" style="color:#ff8000;">LP Tracker — Current</a>
             <a href="thedot.html" class="py-1 block hover:text-[#ff8000]">The CAL</a>
+
+            <div class="my-2 border-t border-slate-200"></div>
+
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Archive</div>
+            <a href="season-25.html" class="py-1 block hover:text-[#ff8000]">S25 (Archive)</a>
           </div>
 
           <div class="my-2 border-t border-slate-200"></div>
@@ -208,6 +241,13 @@
             <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-timeline-section">Timeline</button>
             <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lp-prize-race-section">Prize Race</button>
           </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <a href="metrics.html" class="py-1 text-left hover:text-[#ff8000]">Metric Glossary</a>
+          <a href="methodology.html" class="py-1 text-left hover:text-[#ff8000]">Calculations</a>
+          <a href="changelog.html" class="py-1 text-left hover:text-[#ff8000]">Version Tracker</a>
+          <a href="privacy.html" class="py-1 text-left hover:text-[#ff8000]">Privacy Notice</a>
         </div>
       </div>
     </header>
@@ -227,6 +267,11 @@
           <div class="flex items-center gap-2 text-xs">
             <a
               href="index.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+              >Overview</a
+            >
+            <a
+              href="season26team.html"
               class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
               >Team (5)</a
             >

@@ -109,7 +109,7 @@ const { rows: timelineRows } = parseCSVToObjects(timelineText);
 
 renderLaneDynamics26(filtered, timelineRows, { roster: ROSTER });
 
-window.renderLaneDynamics26(filtered, timelineRows, { roster: ROSTER });
+window.renderLaneDynamics26 = renderLaneDynamics26;
 
 
 

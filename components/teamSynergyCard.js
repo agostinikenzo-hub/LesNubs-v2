@@ -6,6 +6,7 @@
 // - Bottom boxes use deterministic noise tiles (stable hashing)
 // - Core Identity slots: HIDE champ until pilot has >= unlockRoleGames role games
 // - Champion icons hydrate async via championSquareUrl()
+// - Signature picks: uses confidence-adjusted winrates to avoid 1-game 100% noise
 
 import { championSquareUrl } from "../core/ddragon.js";
 
@@ -260,6 +261,37 @@ function winRate(items) {
   return (w / items.length) * 100;
 }
 
+// -----------------------------
+// Anti-noise winrate helpers (kills 1-game 100%)
+// -----------------------------
+
+// Empirical-Bayes smoothing: shrinks small samples toward a prior (pilot baseline/team WR)
+function bayesWinRatePct(wins, games, priorWrPct = 50, priorGames = 6) {
+  const n = Math.max(0, Number(games) || 0);
+  const w = Math.max(0, Number(wins) || 0);
+  const pg = Math.max(0, Number(priorGames) || 0);
+  const priorP = Math.min(1, Math.max(0, (Number(priorWrPct) || 50) / 100));
+  const priorWins = priorP * pg;
+  const denom = n + pg;
+  if (!denom) return 0;
+  return ((w + priorWins) / denom) * 100;
+}
+
+// Wilson score interval LOWER bound (conservative WR). Great to rank "reliability".
+function wilsonLowerBoundPct(wins, games, z = 1.0) {
+  const n = Math.max(0, Number(games) || 0);
+  const w = Math.max(0, Number(wins) || 0);
+  if (!n) return 0;
+
+  const p = w / n;
+  const z2 = z * z;
+  const denom = 1 + z2 / n;
+  const center = p + z2 / (2 * n);
+  const margin = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n);
+  const lb = (center - margin) / denom;
+  return Math.max(0, Math.min(1, lb)) * 100;
+}
+
 // ============================================================================
 // Public mount
 // ============================================================================
@@ -272,7 +304,12 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
     return;
   }
 
-  const UNLOCK_ROLE_GAMES = Number.isFinite(opts.unlockRoleGames) ? opts.unlockRoleGames : 99;
+  const UNLOCK_ROLE_GAMES = Number.isFinite(opts.unlockRoleGames) ? opts.unlockRoleGames : 0;
+
+  // ✅ NEW: anti-noise knobs (defaults are sane; override via opts.*)
+  const MIN_PICK_GAMES = Number.isFinite(opts.minPickGames) ? opts.minPickGames : 3; // hide 1-offs
+  const PRIOR_GAMES = Number.isFinite(opts.priorGames) ? opts.priorGames : 6; // smoothing strength
+  const WILSON_Z = Number.isFinite(opts.wilsonZ) ? opts.wilsonZ : 1.0; // ~68% lower bound
 
   // ✅ NEW: roster filtering (recommended)
   // pass opts.roster: ROSTER_ORDER
@@ -389,11 +426,12 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
   const duoArr = Object.values(duoStats)
     .filter((d) => d.games >= 3)
     .map((d) => {
-      const wr = (d.wins / d.games) * 100;
-      const lift = wr - teamWR;
+      const wrRaw = (d.wins / d.games) * 100;
+      const wrLB = wilsonLowerBoundPct(d.wins, d.games, WILSON_Z);
+      const lift = wrLB - teamWR; // conservative comparison to team
       const sizeBoost = Math.log10(d.games + 1);
-      const score = (wr / 100) * 0.6 + Math.max(0, lift / 30) * 0.25 + sizeBoost * 0.15;
-      return { ...d, wr, lift, score };
+      const score = (wrLB / 100) * 0.7 + Math.max(0, lift / 30) * 0.2 + sizeBoost * 0.1;
+      return { ...d, wr: wrRaw, wrLB, lift, score };
     })
     .sort((a, b) => b.score - a.score);
 
@@ -417,15 +455,17 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
   const botArr = Object.values(botCombos)
     .filter((c) => c.games >= 2)
     .map((c) => {
-      const wr = (c.wins / c.games) * 100;
-      return { ...c, wr, lift: wr - teamWR };
+      const wrRaw = (c.wins / c.games) * 100;
+      const wrLB = wilsonLowerBoundPct(c.wins, c.games, WILSON_Z);
+      return { ...c, wr: wrRaw, wrLB, lift: wrLB - teamWR };
     })
-    .sort((a, b) => b.wr - a.wr || b.games - a.games);
+    .sort((a, b) => b.wrLB - a.wrLB || b.games - a.games);
 
   const bestBot = botArr[0] || null;
 
   // -----------------------------
   // 3) Signature picks per role (Top 5) + Top 3 overall
+  //    ✅ Uses confidence-adjusted WR to avoid 1-game 100% picks.
   // -----------------------------
   const ROLE_ORDER = ["TOP", "JUNGLE", "MID", "BOTTOM", "SUPPORT"];
   const roleLabel = { TOP: "TOP", JUNGLE: "JUNGLE", MID: "MID", BOTTOM: "BOTTOM", SUPPORT: "SUPPORT" };
@@ -444,23 +484,40 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
   });
 
   const rawPicks = Object.values(pickStats).map((p) => {
-    const wr = p.games ? (p.wins / p.games) * 100 : 0;
     const base = getPilotBaseline(p.pilot);
+    const wrRaw = p.games ? (p.wins / p.games) * 100 : 0;
+
+    // Smoothed WR (shrinks toward pilot baseline)
+    const wr = bayesWinRatePct(p.wins, p.games, base.wr, PRIOR_GAMES);
+
+    // Conservative WR (reliability)
+    const wrLB = wilsonLowerBoundPct(p.wins, p.games, WILSON_Z);
+
+    // “Proven” if even conservative estimate beats baseline (and enough games)
+    const proven = p.games >= MIN_PICK_GAMES && wrLB >= base.wr;
+
     const wrLift = wr - base.wr;
+    const liftLB = wrLB - base.wr;
+
+    // Score ranks reliability first (LB), then positive lift, then small volume boost
     const vol = Math.log10(p.games + 1);
-    const score = (wr / 100) * (1 + vol) + Math.max(0, wrLift / 25);
-    return { ...p, wr, wrLift, score };
+    const score = (wrLB / 100) * 0.65 + Math.max(0, liftLB / 25) * 0.25 + vol * 0.10;
+
+    return { ...p, wrRaw, wr, wrLB, wrLift, proven, score };
   });
+
+  // Only show picks with enough games (kills 1-off 100% for the season)
+  const eligiblePicks = rawPicks.filter((p) => p.games >= MIN_PICK_GAMES);
 
   const roleTop5 = {};
   ROLE_ORDER.forEach((role) => {
-    roleTop5[role] = rawPicks
+    roleTop5[role] = eligiblePicks
       .filter((p) => p.role === role)
       .sort((a, b) => b.score - a.score || b.games - a.games || b.wr - a.wr)
       .slice(0, 5);
   });
 
-  const top3Overall = rawPicks
+  const top3Overall = eligiblePicks
     .slice()
     .sort((a, b) => b.score - a.score || b.games - a.games || b.wr - a.wr)
     .slice(0, 3);
@@ -519,6 +576,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
 
     const chipsHTML =
       chip(`${bestDuo.wr.toFixed(1)}% WR`, "sky") +
+      chip(`LB ${bestDuo.wrLB.toFixed(1)}%`, "slate") +
       chip(`${bestDuo.games} games`, "slate") +
       liftChip(bestDuo.lift) +
       chip(`Team: ${teamWR.toFixed(1)}%`, "slate");
@@ -552,6 +610,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
 
     const chipsHTML =
       chip(`${bestBot.wr.toFixed(1)}% WR`, "emerald") +
+      chip(`LB ${bestBot.wrLB.toFixed(1)}%`, "slate") +
       chip(`${bestBot.games} games`, "slate") +
       liftChip(bestBot.lift);
 
@@ -559,7 +618,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
       tone: "emerald",
       title: "Best Bot Lane Combo",
       main: `${esc(bestBot.adc)} + ${esc(bestBot.sup)}`,
-      sub: "Highest winrate bot lane pair in this season.",
+      sub: "Highest winrate bot lane pair in this season (confidence-adjusted).",
       chipsHTML,
       iconHTML,
     });
@@ -571,7 +630,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
         tone: "orange",
         title: "Top Signature Picks",
         main: "No signatures yet",
-        sub: "Once picks have enough volume + WR lift, they show up here.",
+        sub: `Needs at least ${MIN_PICK_GAMES} games on the pick to show.`,
         chipsHTML: chip(`${teamWR.toFixed(1)}% team WR`, "orange"),
       });
     }
@@ -595,6 +654,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
             </div>
             <div class="shrink-0 flex items-center gap-1.5">
               ${chip(`${s.wr.toFixed(0)}%`, "orange")}
+              ${chip(`LB ${s.wrLB.toFixed(0)}%`, "slate")}
               ${chip(`${s.games}g`, "slate")}
               ${liftChip(lift)}
             </div>
@@ -610,7 +670,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
         ${iconHTML}
         <div class="relative">
           <div class="text-[0.65rem] font-semibold uppercase text-orange-600 tracking-wide">Top Signature Picks</div>
-          <div class="mt-1 text-sm font-semibold text-slate-900">Best 3 picks this season</div>
+          <div class="mt-1 text-sm font-semibold text-slate-900">Best 3 picks this season (reliability-ranked)</div>
           <div class="mt-2">${lines}</div>
           <div class="mt-3 flex flex-wrap gap-1.5">
             ${chip(`${teamWR.toFixed(1)}% team WR`, "slate")}
@@ -690,6 +750,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
                     </div>
                     <div class="mt-2 flex flex-wrap gap-1.5">
                       ${chip(`${s.wr.toFixed(1)}% WR`, "purple")}
+                      ${chip(`LB ${s.wrLB.toFixed(1)}%`, "slate")}
                       ${chip(`${s.games}g on champ`, "slate")}
                       ${liftChip(lift)}
                     </div>
@@ -707,7 +768,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
     <div class="mt-4">
       <div class="flex items-baseline justify-between gap-2">
         <div class="text-sm font-semibold text-slate-900">Signature Picks by Role</div>
-        <div class="text-[0.7rem] text-slate-500">Top 5 champs per lane · with pilot + WR lift</div>
+        <div class="text-[0.7rem] text-slate-500">Top 5 champs per lane · reliability-ranked</div>
       </div>
 
       <div class="mt-3 grid gap-3 lg:grid-cols-2">
@@ -734,7 +795,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
                   <div class="absolute inset-0" style="background:rgba(255,255,255,0.40); pointer-events:none;"></div>
                   <div class="relative">
                     <div class="text-[0.7rem] font-semibold text-slate-800">${esc(role)}</div>
-                    <div class="mt-2 text-[0.7rem] text-slate-500">No signature candidates yet for this role.</div>
+                    <div class="mt-2 text-[0.7rem] text-slate-500">No signature candidates yet (needs ${MIN_PICK_GAMES}+ games).</div>
                   </div>
                 </div>
               `;
@@ -755,6 +816,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
                     </div>
                     <div class="shrink-0 flex items-center gap-1.5">
                       ${chip(`${s.wr.toFixed(0)}%`, "slate")}
+                      ${chip(`LB ${s.wrLB.toFixed(0)}%`, "slate")}
                       ${chip(`${s.games}g`, "slate")}
                       ${liftChip(lift)}
                     </div>
@@ -818,6 +880,7 @@ export async function mountTeamSynergyCard(mountEl, rows, opts = {}) {
       rowsIn: rows.length,
       rowsAfterFilter: rosterFiltered.length,
       rowsAfterSeason: filteredData.length,
+      antiNoise: { MIN_PICK_GAMES, PRIOR_GAMES, WILSON_Z },
     });
   }
 }

@@ -76,6 +76,30 @@ function injectSummaryExtrasOnce() {
       font-weight: 800;
     }
 
+    /* ✅ NEW: Stack winrate mini rows (fits inside one stat card) */
+    body.s26 .s26-stackrows{
+      margin-top: .18rem;
+      display:flex;
+      flex-direction:column;
+      gap:.14rem;
+    }
+    body.s26 .s26-stackrow{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:.5rem;
+      font-size: .74rem;
+      font-weight: 900;
+      color: rgba(51,65,85,0.95);
+      font-variant-numeric: tabular-nums;
+      line-height: 1.1;
+    }
+    body.s26 .s26-stackrow .muted{
+      color: rgba(100,116,139,0.92);
+      font-weight: 900;
+      white-space: nowrap;
+    }
+
     /* Champs list */
     body.s26 .s26-champs{
       display:flex;
@@ -880,6 +904,69 @@ export function mountSummaryCard(el, rows, opts = {}) {
   const duoPlusMatches = matchCounts.filter((n) => n >= 2).length;
   const soloPct = matchTotal ? (soloMatches / matchTotal) * 100 : 0;
 
+  // ✅ NEW: Winrate by stack size (per match)
+  const STACK_LABEL = {
+    1: "Solo",
+    2: "Duo",
+    3: "Trio",
+    4: "4-stack",
+  };
+  const stackAgg = new Map([
+    [1, { total: 0, known: 0, wins: 0 }],
+    [2, { total: 0, known: 0, wins: 0 }],
+    [3, { total: 0, known: 0, wins: 0 }],
+    [4, { total: 0, known: 0, wins: 0 }],
+  ]);
+
+  for (const m of matchMap.values()) {
+    const sizeRaw = Number(m.players?.size || 0);
+    if (!Number.isFinite(sizeRaw) || sizeRaw <= 0) continue;
+    const size = Math.max(1, Math.min(4, sizeRaw)); // clamp to 1..4
+    const a0 = stackAgg.get(size);
+    if (!a0) continue;
+    a0.total++;
+
+    if (m.win != null) {
+      a0.known++;
+      if (m.win === true) a0.wins++;
+    }
+  }
+
+  const stackRows = [1, 2, 3, 4]
+    .map((n) => {
+      const s = stackAgg.get(n);
+      const total = s?.total || 0;
+      const known = s?.known || 0;
+      const wins = s?.wins || 0;
+      const wr = known ? (wins / known) * 100 : null;
+      return { n, label: STACK_LABEL[n], total, known, wins, wr };
+    })
+    .filter((x) => x.total > 0); // show only sizes that exist in this dataset
+
+  let bestStack = null;
+  for (const r of stackRows) {
+    if (!r.known || r.wr == null) continue;
+    if (!bestStack || r.wr > bestStack.wr) bestStack = r;
+  }
+
+  const bestStackText = bestStack ? `${bestStack.label} ${Math.round(bestStack.wr)}%` : "—";
+  const stackRowsHtml = stackRows.length
+    ? `<div class="s26-stackrows">
+        ${stackRows
+          .map((r) => {
+            const wrTxt = r.known ? `${Math.round(r.wr)}%` : "—";
+            const detail = r.known ? `${r.wins}/${r.known}` : `0/0`;
+            return `
+              <div class="s26-stackrow" title="${escapeAttr(`${r.label}: ${detail} (matches: ${r.total})`)}">
+                <span>${escapeHtml(r.label)}</span>
+                <span class="muted">${escapeHtml(wrTxt)} · ${escapeHtml(detail)}</span>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>`
+    : `<div class="s26-stat-hint">—</div>`;
+
   // Multikills totals + top3 per type (row-weighted)
   function multiSummary(kind) {
     let total = 0;
@@ -1005,6 +1092,14 @@ export function mountSummaryCard(el, rows, opts = {}) {
         <div class="s26-stat-label">Solo vs party</div>
         <div class="s26-stat-value">${Math.round(soloPct)}% Solo</div>
         <div class="s26-stat-hint">${soloMatches}/${matchTotal} solo · ${duoPlusMatches}/${matchTotal} duo+</div>
+      </div>
+
+      <!-- ✅ NEW mini card: Stack Winrate -->
+      <div class="s26-stat">
+        <div class="s26-stat-label">Stack winrate</div>
+        <div class="s26-stat-value">${escapeHtml(bestStackText)}</div>
+        <div class="s26-stat-hint">Which stack wins more</div>
+        ${stackRowsHtml}
       </div>
 
       <div class="s26-stat">

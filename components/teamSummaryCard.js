@@ -518,6 +518,10 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
   const triples = sumMulti("triple");
   const quadras = sumMulti("quadra");
   const pentas = sumMulti("penta");
+  const topDoubles = topMultiEntries("double", 5);
+  const topTriples = topMultiEntries("triple", 5);
+  const topQuadras = topMultiEntries("quadra", 5);
+  const topPentas = topMultiEntries("penta", 5);
 
   const avgGoldEntries = [...goldAggByPlayer.entries()]
     .map(([player, g]) => ({ player, value: g.cnt ? g.sum / g.cnt : 0 }))
@@ -626,29 +630,29 @@ export function mountTeamSummaryCard(mountEl, rawRows, opts = {}) {
           ${tile({
             label: "Double Kill",
             value: fmtInt(doubles.total),
-            subHTML: topMultiEntries("double", 5).length
-              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("double", 5), 5, (v) => fmtInt(v))}</div>`
+            subHTML: topDoubles.length
+              ? `<div class="space-y-1.5">${topNLines(topDoubles, 5, (v) => fmtInt(v))}</div>`
               : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Triple Kill",
             value: fmtInt(triples.total),
-            subHTML: topMultiEntries("triple", 5).length
-              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("triple", 5), 5, (v) => fmtInt(v))}</div>`
+            subHTML: topTriples.length
+              ? `<div class="space-y-1.5">${topNLines(topTriples, 5, (v) => fmtInt(v))}</div>`
               : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Quadra Kill",
             value: fmtInt(quadras.total),
-            subHTML: topMultiEntries("quadra", 5).length
-              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("quadra", 5), 5, (v) => fmtInt(v))}</div>`
+            subHTML: topQuadras.length
+              ? `<div class="space-y-1.5">${topNLines(topQuadras, 5, (v) => fmtInt(v))}</div>`
               : `<div class="text-slate-400">—</div>`,
           })}
           ${tile({
             label: "Penta Kill",
             value: fmtInt(pentas.total),
-            subHTML: topMultiEntries("penta", 5).length
-              ? `<div class="space-y-1.5">${topNLines(topMultiEntries("penta", 5), 5, (v) => fmtInt(v))}</div>`
+            subHTML: topPentas.length
+              ? `<div class="space-y-1.5">${topNLines(topPentas, 5, (v) => fmtInt(v))}</div>`
               : `<div class="text-slate-400">—</div>`,
           })}
         </div>

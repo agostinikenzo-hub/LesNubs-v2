@@ -1,7 +1,7 @@
 // /core/otherFlexData.js
 import { ROSTER } from "./roster.js";
-import { normRole } from "./queues.js"; // or wherever your canonical role normalizer lives
-import { fetchCsv } from "./csv.js";     // swap name to match your csv.js helper
+import { parseLooseDate } from "./dates.js";
+import { fetchCsvText, parseCsv, rowsToObjects } from "./csv.js";
 
 export const SEASON26_OTHER_CSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vSbxcPDjBBWSe4jIwXuQe-_o5C1RGg067CxU4g_j1yqG8D3DAj8BFqvwKuLopePRuUWv7qE5bmEPuLZ/pub?gid=1960192079&single=true&output=csv";
@@ -12,20 +12,24 @@ export const SEASON26_OTHER_TIMELINE_CSV =
 export const OTHER_START_DATE = new Date(2026, 0, 8); // 08 Jan 2026
 
 function parseDateEU(s) {
-  const str = String(s || "").trim();
-  if (!str) return null;
-  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    const d = new Date(str);
-    return isFinite(d) ? d : null;
-  }
-  const m = str.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (!m) return null;
-  const dd = +m[1], mm = +m[2] - 1, yy0 = +m[3];
-  const yy = yy0 < 100 ? yy0 + 2000 : yy0;
-  const hh = m[4] ? +m[4] : 0;
-  const min = m[5] ? +m[5] : 0;
-  const d = new Date(yy, mm, dd, hh, min, 0);
-  return isFinite(d) ? d : null;
+  return parseLooseDate(s);
+}
+
+async function fetchCsv(url) {
+  const text = await fetchCsvText(url);
+  const rows = parseCsv(text);
+  return rowsToObjects(rows);
+}
+
+function normRole(raw) {
+  const r = String(raw ?? "").trim().toUpperCase();
+  if (!r) return "—";
+  if (r === "UTILITY" || r === "SUPPORT") return "SUP";
+  if (r === "BOTTOM" || r === "ADC") return "BOT";
+  if (r === "MIDDLE" || r === "MID") return "MID";
+  if (r === "JUNGLE" || r === "JNG" || r === "JG") return "JNG";
+  if (r === "TOP") return "TOP";
+  return r;
 }
 
 function boolish(v) {

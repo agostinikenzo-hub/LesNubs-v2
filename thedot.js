@@ -9,7 +9,6 @@
    NEW:
    - Longest streak of consecutive DAYS with ≥1 game
    - Longest streak of consecutive WEEKS (Mon-start) where ≥1 game in the week
-   - Subtle aura/glow on dots belonging to the LONGEST streaks (works even if ongoing)
    - Compact streak pills in legend row
 
    NOTE: Your palette: BLUE = Solo, ORANGE = Flex, BOTH = split dot
@@ -144,32 +143,7 @@
         font-weight: 900;
       }
 
-      /* Aura/glow on streak dots (won't change layout) */
-      .day-dot{ position: relative; }
-      .day-dot--streak-day::before{
-        content:"";
-        position:absolute;
-        inset:-3px;
-        border-radius: 999px;
-        pointer-events:none;
-        background: radial-gradient(circle at 50% 50%,
-          rgba(249,115,22,0.28) 0%,
-          rgba(249,115,22,0.18) 45%,
-          rgba(249,115,22,0.00) 70%
-        );
-      }
-      .day-dot--streak-week::after{
-        content:"";
-        position:absolute;
-        inset:-2px;
-        border-radius: 999px;
-        pointer-events:none;
-        background: radial-gradient(circle at 50% 50%,
-          rgba(59,130,246,0.20) 0%,
-          rgba(59,130,246,0.10) 45%,
-          rgba(59,130,246,0.00) 72%
-        );
-      }
+      /* No dot animations; keep dots crisp */
     `;
     document.head.appendChild(style);
   }
@@ -311,12 +285,6 @@
     return x;
   }
 
-  function weekKeyFromDateKey(dateKey) {
-    // dateKey: YYYY-MM-DD
-    const d = new Date(dateKey + "T00:00:00");
-    return toISODateKey(mondayStart(d));
-  }
-
   function computeBestDayStreak(data, start, end) {
     const s = startOfDay(start);
     const e = startOfDay(end);
@@ -440,30 +408,6 @@
     };
   }
 
-  function buildDateKeySet(startKey, endKey) {
-    const out = new Set();
-    if (!startKey || !endKey) return out;
-    const s = new Date(startKey + "T00:00:00");
-    const e = new Date(endKey + "T00:00:00");
-    if (isNaN(s.getTime()) || isNaN(e.getTime())) return out;
-    for (let d = new Date(s); d.getTime() <= e.getTime(); d.setDate(d.getDate() + 1)) {
-      out.add(toISODateKey(d));
-    }
-    return out;
-  }
-
-  function buildWeekKeySet(startWk, endWk) {
-    const out = new Set();
-    if (!startWk || !endWk) return out;
-    const s = new Date(startWk + "T00:00:00");
-    const e = new Date(endWk + "T00:00:00");
-    if (isNaN(s.getTime()) || isNaN(e.getTime())) return out;
-    for (let w = new Date(s); w.getTime() <= e.getTime(); w.setDate(w.getDate() + 7)) {
-      out.add(toISODateKey(w));
-    }
-    return out;
-  }
-
   function applyStreakDecorations(data) {
     const today = startOfDay(new Date());
     const { activeStart, activeEnd } = getActiveWindow(today);
@@ -473,23 +417,8 @@
 
     updateStreakLegend(dayStreak.best.len, weekStreak.best.len);
 
-    const bestDayKeys = buildDateKeySet(dayStreak.best.startKey, dayStreak.best.endKey);
-    const bestWeekKeys = buildWeekKeySet(weekStreak.best.startWk, weekStreak.best.endWk);
-
-    // Apply glow classes to dots
-    const dots = document.querySelectorAll(".day-dot[data-date]");
-    dots.forEach((dot) => {
-      const key = dot.dataset.date || "";
-      if (!key) return;
-
-      // day streak glow (only if played)
-      const played = (Number(dot.dataset.count || 0) || 0) > 0;
-      dot.classList.toggle("day-dot--streak-day", played && bestDayKeys.has(key));
-
-      // week streak glow (only if played)
-      const wk = weekKeyFromDateKey(key);
-      dot.classList.toggle("day-dot--streak-week", played && bestWeekKeys.has(wk));
-    });
+    // Keep streak computation for legend pills; dot visuals now come from the global played-dot effect.
+    // (No per-streak dot class toggles here.)
   }
 
   /* =========================
@@ -651,7 +580,7 @@
       splitWrap.classList.add("hidden");
       STATE.isLoading = false;
 
-      // Apply streak UI + aura
+      // Update streak legend values
       applyStreakDecorations(STATE.matchesPerDay);
 
       hideWeekdayHeaderRow();
@@ -852,7 +781,7 @@
 
     hideWeekdayHeaderRow();
 
-    // After rendering dots, apply aura based on longest streaks
+    // After rendering dots, update streak legend values
     applyStreakDecorations(data);
   }
 
@@ -974,7 +903,7 @@
     ensureDotLegendRow();
     hideWeekdayHeaderRow();
 
-    // re-apply streak aura (dots moved back)
+    // re-apply streak legend values (dots moved back)
     if (STATE.matchesPerDay) applyStreakDecorations(STATE.matchesPerDay);
 
     if (prefersReduced) return;

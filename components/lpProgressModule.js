@@ -8,6 +8,15 @@ function el(tag, cls, html) {
   return n;
 }
 
+function escHtml(v) {
+  return String(v ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function injectStylesOnce() {
   if (document.getElementById("lp-progress-styles")) return;
   const style = document.createElement("style");
@@ -222,6 +231,298 @@ function injectStylesOnce() {
     }
     .lp-chip--solo { border-color: rgba(255,128,0,0.25); background: rgba(255,128,0,0.10); color: #c2410c; }
     .lp-chip--flex { border-color: rgba(59,130,246,0.22); background: rgba(59,130,246,0.10); color: #1d4ed8; }
+
+    .lp-filter-row {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
+
+    .lp-filter-pill {
+      appearance: none;
+      border: 1px solid rgba(148,163,184,0.35);
+      background: rgba(255,255,255,0.72);
+      color: rgba(15,23,42,0.82);
+      border-radius: 999px;
+      padding: 3px 10px;
+      font-size: 0.64rem;
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, color 120ms ease;
+    }
+
+    .lp-filter-pill:hover {
+      transform: translateY(-1px);
+      border-color: rgba(100,116,139,0.45);
+      background: rgba(255,255,255,0.92);
+    }
+
+    .lp-filter-pill--solo {
+      border-color: rgba(255,128,0,0.22);
+      background: rgba(255,128,0,0.07);
+      color: #c2410c;
+    }
+
+    .lp-filter-pill--flex {
+      border-color: rgba(59,130,246,0.22);
+      background: rgba(59,130,246,0.07);
+      color: #1d4ed8;
+    }
+
+    .lp-filter-pill--active {
+      color: #0f172a;
+      border-color: rgba(15,23,42,0.35);
+      background: rgba(15,23,42,0.08);
+      box-shadow: 0 4px 10px rgba(15,23,42,0.08);
+    }
+
+    .lp-filter-pill--active.lp-filter-pill--solo {
+      color: #c2410c;
+      border-color: rgba(255,128,0,0.35);
+      background: rgba(255,128,0,0.14);
+    }
+
+    .lp-filter-pill--active.lp-filter-pill--flex {
+      color: #1d4ed8;
+      border-color: rgba(59,130,246,0.33);
+      background: rgba(59,130,246,0.14);
+    }
+
+    @keyframes lpMilestoneEnter {
+      0%   { opacity: 0; transform: translate(-50%, 10px) scale(0.96); }
+      55%  { opacity: 1; }
+      100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    }
+
+    @keyframes lpMilestoneGlow {
+      0%, 100% { box-shadow: 0 6px 14px rgba(15,23,42,0.06); }
+      50%      { box-shadow: 0 10px 22px rgba(15,23,42,0.10); }
+    }
+
+    @keyframes lpTrackSweep {
+      0%   { transform: translateX(-28%); opacity: 0.00; }
+      35%  { opacity: 0.22; }
+      100% { transform: translateX(128%); opacity: 0.00; }
+    }
+
+    .lp-miles-shell {
+      border: 1px solid rgba(148,163,184,0.35);
+      border-radius: 1.25rem;
+      background: rgba(255,255,255,0.60);
+      backdrop-filter: blur(10px);
+      padding: 0.9rem;
+      box-shadow: 0 10px 24px rgba(15,23,42,0.06);
+      overflow: hidden;
+    }
+
+    .lp-miles-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.45rem;
+    }
+
+    .lp-miles-title {
+      font-size: 0.9rem;
+      font-weight: 900;
+      color: #0f172a;
+    }
+
+    .lp-miles-sub {
+      font-size: 0.72rem;
+      color: rgba(100,116,139,0.95);
+      margin-top: 0.1rem;
+    }
+
+    .lp-miles-filters {
+      margin-top: 0.35rem;
+      margin-bottom: 0.55rem;
+      display: grid;
+      gap: 0.35rem;
+    }
+
+    .lp-miles-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-bottom: 0.2rem;
+    }
+
+    .lp-miles-board {
+      min-width: 860px;
+      height: 246px;
+      position: relative;
+      border-radius: 0.95rem;
+      background:
+        radial-gradient(circle at 16% 10%, rgba(255,128,0,0.10), transparent 36%),
+        radial-gradient(circle at 86% 0%, rgba(59,130,246,0.10), transparent 40%),
+        linear-gradient(180deg, rgba(248,250,252,0.82), rgba(241,245,249,0.58));
+      border: 1px solid rgba(148,163,184,0.28);
+      overflow: hidden;
+      padding: 0;
+    }
+
+    .lp-miles-track {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      top: 42px;
+      height: 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.24);
+      background: linear-gradient(90deg, rgba(255,128,0,0.28), rgba(59,130,246,0.24));
+      overflow: hidden;
+    }
+
+    .lp-miles-track::after {
+      content: "";
+      position: absolute;
+      top: -6px;
+      width: 140px;
+      height: 18px;
+      background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.55), rgba(255,255,255,0));
+      animation: lpTrackSweep 5.6s linear infinite;
+      pointer-events: none;
+    }
+
+    .lp-miles-month {
+      position: absolute;
+      top: 14px;
+      transform: translateX(-50%);
+      font-size: 0.62rem;
+      font-weight: 900;
+      color: rgba(51,65,85,0.56);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .lp-miles-tick {
+      position: absolute;
+      top: 37px;
+      width: 1px;
+      height: 15px;
+      background: rgba(15,23,42,0.16);
+      transform: translateX(-50%);
+      user-select: none;
+      pointer-events: none;
+    }
+
+    .lp-miles-today {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg, rgba(239,68,68,0.0), rgba(239,68,68,0.55), rgba(239,68,68,0.0));
+      transform: translateX(-50%);
+      pointer-events: none;
+    }
+
+    .lp-miles-event {
+      position: absolute;
+      width: 104px;
+      transform: translateX(-50%);
+      text-align: center;
+      animation: lpMilestoneEnter 0.45s ease both;
+      will-change: transform, opacity;
+    }
+
+    .lp-miles-dot-wrap {
+      width: 24px;
+      margin: 0 auto;
+    }
+
+    .lp-miles-dot {
+      width: 24px;
+      height: 24px;
+      display: block;
+      filter: drop-shadow(0 6px 10px rgba(15,23,42,0.16));
+      animation: lpBounce 2.2s ease-in-out infinite, lpMilestoneGlow 3.4s ease-in-out infinite;
+    }
+
+    .lp-miles-dot circle.ring {
+      fill: none;
+      stroke-width: 1.5;
+    }
+
+    .lp-miles-dot.lp-dotg--solo circle.ring {
+      stroke: rgba(255,128,0,0.45);
+    }
+    .lp-miles-dot.lp-dotg--flex circle.ring {
+      stroke: rgba(59,130,246,0.40);
+    }
+    .lp-miles-dot.lp-dotg--unranked circle.ring {
+      stroke: rgba(148,163,184,0.35);
+    }
+
+    .lp-miles-kind {
+      margin-top: 0.18rem;
+      font-size: 0.58rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: rgba(71,85,105,0.85);
+    }
+
+    .lp-miles-event--tier .lp-miles-kind {
+      color: #b45309;
+    }
+    .lp-miles-event--division .lp-miles-kind {
+      color: #c2410c;
+    }
+    .lp-miles-event--placement .lp-miles-kind {
+      color: #475569;
+    }
+
+    .lp-miles-rank {
+      margin-top: 0.08rem;
+      font-size: 0.64rem;
+      font-weight: 900;
+      color: #0f172a;
+      line-height: 1.15;
+    }
+
+    .lp-miles-date {
+      margin-top: 0.06rem;
+      font-size: 0.57rem;
+      color: rgba(100,116,139,0.88);
+      line-height: 1.1;
+    }
+
+    .lp-miles-foot {
+      margin-top: 0.42rem;
+      font-size: 0.67rem;
+      color: rgba(100,116,139,0.92);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .lp-miles-counts {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      flex-wrap: wrap;
+    }
+
+    .lp-miles-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(148,163,184,0.33);
+      background: rgba(255,255,255,0.72);
+      font-size: 0.62rem;
+      font-weight: 900;
+      color: rgba(15,23,42,0.82);
+    }
   `;
   document.head.appendChild(style);
 }
@@ -624,6 +925,405 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
   return { svg };
 }
 
+const MILESTONE_TIERS = [
+  "IRON",
+  "BRONZE",
+  "SILVER",
+  "GOLD",
+  "PLATINUM",
+  "EMERALD",
+  "DIAMOND",
+  "MASTER",
+  "GRANDMASTER",
+  "CHALLENGER",
+];
+
+const MILESTONE_DIVS = ["IV", "III", "II", "I"];
+
+function queueClass(queue) {
+  return queue === "SOLO" ? "solo" : queue === "FLEX" ? "flex" : "other";
+}
+
+function cleanRankLabel(label) {
+  const s = String(label || "").trim();
+  if (!s) return "";
+  return s.split("·")[0].trim();
+}
+
+function rankLabelFromFloor(floor) {
+  if (!Number.isFinite(floor) || floor < 0) return "UNRANKED";
+  const tierIdx = Math.floor(floor / 4);
+  const divIdx = floor % 4;
+  const tier = MILESTONE_TIERS[tierIdx] || `TIER ${tierIdx + 1}`;
+  if (tierIdx >= 7) return tier;
+  return `${tier} ${MILESTONE_DIVS[Math.max(0, Math.min(3, divIdx))]}`;
+}
+
+function rankLabelWithFallback(row, floor) {
+  const clean = cleanRankLabel(row?.currentRank);
+  if (clean) return clean;
+  return rankLabelFromFloor(floor);
+}
+
+function playerIdsOrdered(seriesMap, rosterOrder = []) {
+  const ids = [...seriesMap.keys()];
+  const order = rosterOrder.map((x) => String(x || "").trim()).filter(Boolean);
+
+  ids.sort((a, b) => {
+    const na = safeName(a);
+    const nb = safeName(b);
+    const ia = order.indexOf(na);
+    const ib = order.indexOf(nb);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return na.localeCompare(nb);
+  });
+  return ids;
+}
+
+function seasonWindowFromRows(rows) {
+  const validTs = (rows || [])
+    .map((r) => (Number.isFinite(r?.snapshotTs) ? r.snapshotTs : r?.snapshotDate?.getTime?.() ?? NaN))
+    .filter((x) => Number.isFinite(x) && x > 0);
+
+  const anchor = validTs.length ? new Date(Math.min(...validTs)) : new Date();
+  const year = anchor.getUTCFullYear();
+  const startTs = Date.UTC(year, 0, 1, 0, 0, 0, 0);
+  const endTs = Date.UTC(year, 11, 31, 23, 59, 59, 999);
+  return { year, startTs, endTs };
+}
+
+function pctOnSeason(ts, startTs, endTs) {
+  if (!Number.isFinite(ts) || !Number.isFinite(startTs) || !Number.isFinite(endTs) || endTs <= startTs) return 0;
+  const p = ((ts - startTs) / (endTs - startTs)) * 100;
+  return Math.max(0, Math.min(100, p));
+}
+
+function collectMilestoneEvents(seriesMap, rosterOrder = []) {
+  const events = [];
+  const ids = playerIdsOrdered(seriesMap, rosterOrder);
+  const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+  for (const riotId of ids) {
+    const name = safeName(riotId);
+    const qs = seriesMap.get(riotId) || {};
+
+    for (const queue of ["SOLO", "FLEX"]) {
+      const series = (qs[queue] || []).slice().sort((a, b) => (a.snapshotTs || 0) - (b.snapshotTs || 0));
+      if (!series.length) continue;
+
+      const first = series[0];
+      const firstIdx = Number(first?.rankIndex);
+      if (Number.isFinite(firstIdx) && firstIdx >= 0) {
+        const firstFloor = Math.floor(firstIdx);
+        const firstTs = Number.isFinite(first?.snapshotTs) ? first.snapshotTs : first?.snapshotDate?.getTime?.() ?? 0;
+        const firstDate = first?.snapshotDate ? dayFmt.format(first.snapshotDate) : (first?.snapshotDateStr || "—");
+        events.push({
+          riotId,
+          name,
+          queue,
+          ts: firstTs,
+          rankFloor: firstFloor,
+          rankLabel: rankLabelWithFallback(first, firstFloor),
+          kind: "placement",
+          kindLabel: "Placed",
+          dateLabel: firstDate,
+        });
+      }
+
+      for (let i = 1; i < series.length; i++) {
+        const prev = series[i - 1];
+        const cur = series[i];
+
+        const prevIdx = Number(prev?.rankIndex);
+        const curIdx = Number(cur?.rankIndex);
+        if (!Number.isFinite(curIdx) || curIdx < 0) continue;
+
+        const prevFloor = Number.isFinite(prevIdx) && prevIdx >= 0 ? Math.floor(prevIdx) : -1;
+        const curFloor = Math.floor(curIdx);
+        if (curFloor <= prevFloor) continue;
+
+        const ts = Number.isFinite(cur?.snapshotTs) ? cur.snapshotTs : cur?.snapshotDate?.getTime?.() ?? 0;
+        const dateStr = cur?.snapshotDate ? dayFmt.format(cur.snapshotDate) : (cur?.snapshotDateStr || "—");
+
+        // First ranked appearance in this queue: capture one placement event.
+        if (prevFloor < 0) {
+          events.push({
+            riotId,
+            name,
+            queue,
+            ts,
+            rankFloor: curFloor,
+            rankLabel: rankLabelWithFallback(cur, curFloor),
+            kind: "placement",
+            kindLabel: "Placed",
+            dateLabel: dateStr,
+          });
+          continue;
+        }
+
+        for (let floor = prevFloor + 1; floor <= curFloor; floor++) {
+          const fromTier = Math.floor((floor - 1) / 4);
+          const toTier = Math.floor(floor / 4);
+          const isTierUp = toTier > fromTier;
+          const atTop = floor === curFloor;
+
+          events.push({
+            riotId,
+            name,
+            queue,
+            ts,
+            rankFloor: floor,
+            rankLabel: atTop ? rankLabelWithFallback(cur, floor) : rankLabelFromFloor(floor),
+            kind: isTierUp ? "tier" : "division",
+            kindLabel: isTierUp ? "Tier Up" : "Division Up",
+            dateLabel: dateStr,
+          });
+        }
+      }
+    }
+  }
+
+  events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  return events;
+}
+
+function normalizeMilestoneFilters(filters = {}) {
+  const queue = filters.queue === "SOLO" || filters.queue === "FLEX" ? filters.queue : "all";
+  const kind =
+    filters.kind === "tier" || filters.kind === "division" || filters.kind === "placement"
+      ? filters.kind
+      : "all";
+  const player = filters.player && filters.player !== "all" ? String(filters.player) : "all";
+  return { queue, kind, player };
+}
+
+function applyMilestoneFilters(events, filters) {
+  const f = normalizeMilestoneFilters(filters);
+  return (events || []).filter((e) => {
+    if (f.queue !== "all" && e.queue !== f.queue) return false;
+    if (f.kind !== "all" && e.kind !== f.kind) return false;
+    if (f.player !== "all" && e.riotId !== f.player) return false;
+    return true;
+  });
+}
+
+function filterSummaryText(filters, playerNameById) {
+  const f = normalizeMilestoneFilters(filters);
+  const q = f.queue === "all" ? "all queues" : f.queue;
+  const k =
+    f.kind === "all"
+      ? "all milestone types"
+      : f.kind === "tier"
+      ? "tier-ups"
+      : f.kind === "division"
+      ? "division-ups"
+      : "placements";
+  const p = f.player === "all" ? "all players" : (playerNameById.get(f.player) || safeName(f.player));
+  return `${q} · ${k} · ${p}`;
+}
+
+function milestonePill(attr, value, label, { active = false, flavor = "" } = {}) {
+  const cls = [
+    "lp-filter-pill",
+    flavor ? `lp-filter-pill--${flavor}` : "",
+    active ? "lp-filter-pill--active" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return `<button type="button" class="${cls}" ${attr}="${escHtml(value)}" aria-pressed="${active ? "true" : "false"}">${escHtml(label)}</button>`;
+}
+
+function buildMilestoneFiltersHtml(orderedPlayers, filters) {
+  const f = normalizeMilestoneFilters(filters);
+  return `
+    <div class="lp-miles-filters">
+      <div class="lp-filter-row">
+        ${milestonePill("data-mq", "all", "All queues", { active: f.queue === "all" })}
+        ${milestonePill("data-mq", "SOLO", "SOLO", { active: f.queue === "SOLO", flavor: "solo" })}
+        ${milestonePill("data-mq", "FLEX", "FLEX", { active: f.queue === "FLEX", flavor: "flex" })}
+      </div>
+      <div class="lp-filter-row">
+        ${milestonePill("data-mk", "all", "All milestones", { active: f.kind === "all" })}
+        ${milestonePill("data-mk", "tier", "Tier Ups", { active: f.kind === "tier" })}
+        ${milestonePill("data-mk", "division", "Division Ups", { active: f.kind === "division" })}
+        ${milestonePill("data-mk", "placement", "Placements", { active: f.kind === "placement" })}
+      </div>
+      <div class="lp-filter-row">
+        ${milestonePill("data-mp", "all", "All players", { active: f.player === "all" })}
+        ${orderedPlayers
+          .map((id) =>
+            milestonePill("data-mp", id, safeName(id), {
+              active: f.player === id,
+            })
+          )
+          .join("")}
+      </div>
+    </div>
+  `;
+}
+
+function buildMilestonesTimeline(seriesMap, rows, rosterOrder = [], filters = {}) {
+  const { year, startTs, endTs } = seasonWindowFromRows(rows);
+  const allEvents = collectMilestoneEvents(seriesMap, rosterOrder);
+  const f = normalizeMilestoneFilters(filters);
+  const events = applyMilestoneFilters(allEvents, f);
+  const orderedPlayers = playerIdsOrdered(seriesMap, rosterOrder);
+  const playerNameById = new Map(orderedPlayers.map((id) => [id, safeName(id)]));
+  const filterSummary = filterSummaryText(f, playerNameById);
+  const filtersHtml = buildMilestoneFiltersHtml(orderedPlayers, f);
+
+  if (!allEvents.length) {
+    return `
+      <div class="lp-miles-shell">
+        <div class="lp-miles-head">
+          <div>
+            <div class="lp-miles-title">Season ${year} Milestones</div>
+            <div class="lp-miles-sub">Jan to Dec timeline for rank/division progression.</div>
+          </div>
+          <div class="lp-miles-counts">
+            <span class="lp-miles-chip">No milestone events yet</span>
+          </div>
+        </div>
+        ${filtersHtml}
+      </div>
+    `;
+  }
+
+  if (!events.length) {
+    return `
+      <div class="lp-miles-shell">
+        <div class="lp-miles-head">
+          <div>
+            <div class="lp-miles-title">Season ${year} Milestones</div>
+            <div class="lp-miles-sub">Every division and tier-up plotted from January through December.</div>
+          </div>
+          <div class="lp-miles-counts">
+            <span class="lp-miles-chip">0 shown</span>
+            <span class="lp-miles-chip">${allEvents.length} total</span>
+          </div>
+        </div>
+        ${filtersHtml}
+        <div class="text-[0.72rem] text-slate-500 py-2 px-1">
+          No events match the current filters: <span class="font-semibold text-slate-700">${escHtml(filterSummary)}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const monthFmt = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
+  const months = [];
+  for (let m = 0; m < 12; m++) {
+    const ts = Date.UTC(year, m, 1, 0, 0, 0, 0);
+    months.push({
+      label: monthFmt.format(new Date(ts)),
+      pct: pctOnSeason(ts, startTs, endTs),
+    });
+  }
+
+  const laneCount = Math.min(8, Math.max(4, Math.ceil(events.length / 9)));
+  const boardHeight = 128 + laneCount * 56;
+  const boardWidth = Math.max(860, 860 + Math.max(0, events.length - 14) * 16);
+  const minGapPct = Math.max(3.6, 8.3 - laneCount * 0.48);
+  const laneLastPct = new Array(laneCount).fill(-1000);
+  const laidOut = [];
+
+  for (const ev of events) {
+    const pct = pctOnSeason(ev.ts, startTs, endTs);
+    let lane = 0;
+    let picked = false;
+    for (let l = 0; l < laneCount; l++) {
+      if (pct - laneLastPct[l] >= minGapPct) {
+        lane = l;
+        picked = true;
+        break;
+      }
+    }
+    if (!picked) {
+      lane = laneLastPct.indexOf(Math.min(...laneLastPct));
+    }
+    laneLastPct[lane] = pct;
+    laidOut.push({ ...ev, pct, lane, top: 78 + lane * 56 });
+  }
+
+  const tierCount = events.filter((x) => x.kind === "tier").length;
+  const divCount = events.filter((x) => x.kind === "division").length;
+  const placeCount = events.filter((x) => x.kind === "placement").length;
+  const todayPct = pctOnSeason(Date.now(), startTs, endTs);
+
+  const monthHtml = months
+    .map((m) => `<div class="lp-miles-month" style="left:${m.pct}%">${m.label}</div><div class="lp-miles-tick" style="left:${m.pct}%"></div>`)
+    .join("");
+
+  const eventsHtml = laidOut
+    .map((ev, idx) => {
+      const queueCls = queueClass(ev.queue);
+      const dotQueueClass =
+        ev.queue === "SOLO"
+          ? "lp-dotg--solo"
+          : ev.queue === "FLEX"
+          ? "lp-dotg--flex"
+          : "lp-dotg--unranked";
+      const kindCls =
+        ev.kind === "tier"
+          ? "lp-miles-event--tier"
+          : ev.kind === "division"
+          ? "lp-miles-event--division"
+          : "lp-miles-event--placement";
+      const delay = `${Math.min(1.2, idx * 0.04).toFixed(2)}s`;
+
+      return `
+        <article class="lp-miles-event lp-miles-event--${queueCls} ${kindCls}" style="left:${ev.pct.toFixed(3)}%; top:${ev.top}px; animation-delay:${delay};">
+          <div class="lp-miles-dot-wrap">
+            <svg class="lp-miles-dot lp-dotg ${dotQueueClass}" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="animation-delay:${delay};">
+              <circle class="ring" cx="12" cy="12" r="11"></circle>
+              <circle class="main" cx="12" cy="12" r="9"></circle>
+              <text class="initials" x="12" y="12">${escHtml(initials(ev.name))}</text>
+            </svg>
+          </div>
+          <div class="lp-miles-rank">${escHtml(ev.rankLabel)}</div>
+          <div class="lp-miles-date">${escHtml(ev.dateLabel)}</div>
+        </article>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="lp-miles-shell">
+      <div class="lp-miles-head">
+        <div>
+          <div class="lp-miles-title">Season ${year} Milestones</div>
+          <div class="lp-miles-sub">Every division and tier-up plotted from January through December.</div>
+        </div>
+        <div class="lp-miles-counts">
+          <span class="lp-miles-chip">${events.length} shown</span>
+          <span class="lp-miles-chip">${allEvents.length} total</span>
+          <span class="lp-miles-chip">${tierCount} tier-ups</span>
+          <span class="lp-miles-chip">${divCount} division-ups</span>
+          <span class="lp-miles-chip">${placeCount} placements</span>
+        </div>
+      </div>
+      ${filtersHtml}
+
+      <div class="lp-miles-scroll">
+        <div class="lp-miles-board" style="min-width:${boardWidth}px; height:${boardHeight}px;">
+          ${monthHtml}
+          <div class="lp-miles-track"></div>
+          <div class="lp-miles-today" style="left:${todayPct.toFixed(3)}%"></div>
+          ${eventsHtml}
+        </div>
+      </div>
+
+      <div class="lp-miles-foot">
+        <div>Milestones use rank-index division crossings (upward only).</div>
+        <div>${escHtml(filterSummary)}</div>
+        <div>Track spans Jan 1, ${year} to Dec 31, ${year}.</div>
+      </div>
+    </div>
+  `;
+}
+
 export async function mountLpProgressModule(
   mountEl,
   { csvUrl, rosterOrder = [], unlockInDays = 0, title = "LP Progression (SOLO + FLEX)" } = {}
@@ -636,7 +1336,7 @@ export async function mountLpProgressModule(
     <div class="card-header">
       <div>
         <div class="card-title">${title}</div>
-        <div class="card-subtitle">Highlights + rank map.</div>
+        <div class="card-subtitle">Highlights, rank map, and season milestones.</div>
       </div>
     </div>
     <div class="text-xs text-slate-500 mt-2">Loading…</div>
@@ -675,10 +1375,10 @@ export async function mountLpProgressModule(
       "mb-3",
       `
       <div class="text-sm font-bold text-slate-900">${title}</div>
-      <div class="text-[0.72rem] text-slate-500">Top cards + a single map showing where everyone currently sits.</div>
+      <div class="text-[0.72rem] text-slate-500">Top cards, a rank map, and milestone timeline through December.</div>
       <div class="mt-2 flex flex-wrap gap-2">
-        <span class="lp-pill lp-pill--solo">● SOLO</span>
-        <span class="lp-pill lp-pill--flex">● FLEX</span>
+        <span class="lp-pill lp-pill--solo">SOLO</span>
+        <span class="lp-pill lp-pill--flex">FLEX</span>
         <span class="lp-pill">RankPts = rankIndex × 100</span>
       </div>
       `
@@ -743,4 +1443,40 @@ export async function mountLpProgressModule(
   const mapWrap = el("div", "mt-3");
   mapWrap.innerHTML = svg;
   mountEl.appendChild(mapWrap);
+
+  const milestonesWrap = el("div", "mt-3");
+  mountEl.appendChild(milestonesWrap);
+
+  const filters = { queue: "all", kind: "tier", player: "all" };
+
+  const rerenderMilestones = () => {
+    milestonesWrap.innerHTML = buildMilestonesTimeline(seriesMap, rows, rosterOrder, filters);
+  };
+
+  milestonesWrap.addEventListener("click", (ev) => {
+    const qBtn = ev.target?.closest?.("button[data-mq]");
+    if (qBtn && milestonesWrap.contains(qBtn)) {
+      const v = qBtn.getAttribute("data-mq") || "all";
+      filters.queue = v === "SOLO" || v === "FLEX" ? v : "all";
+      rerenderMilestones();
+      return;
+    }
+
+    const kBtn = ev.target?.closest?.("button[data-mk]");
+    if (kBtn && milestonesWrap.contains(kBtn)) {
+      const v = kBtn.getAttribute("data-mk") || "all";
+      filters.kind = v === "tier" || v === "division" || v === "placement" ? v : "all";
+      rerenderMilestones();
+      return;
+    }
+
+    const pBtn = ev.target?.closest?.("button[data-mp]");
+    if (pBtn && milestonesWrap.contains(pBtn)) {
+      const v = pBtn.getAttribute("data-mp") || "all";
+      filters.player = v && v !== "all" ? v : "all";
+      rerenderMilestones();
+    }
+  });
+
+  rerenderMilestones();
 }

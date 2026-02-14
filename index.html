@@ -3,28 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Les Nübs — Season 26 Dashboard (Team)</title>
+    <title>Les Nübs — Season 26 Dashboard (Overview)</title>
 
-    <!-- Fonts & Tailwind -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- CSS -->
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="season26.css" />
     <link rel="icon" href="assets/favicon.ico" />
   </head>
 
   <body class="s26 fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
-    <!-- =======================================
-         TOP NAVIGATION / APP SHELL
-    ======================================== -->
     <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
-        <!-- Brand -->
         <div class="flex items-center gap-2 shrink-0">
           <div
             class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
@@ -38,11 +32,8 @@
           </div>
         </div>
 
-        <!-- Desktop Nav -->
         <nav class="hidden md:flex items-center text-[0.7rem] font-medium text-slate-600 flex-1 min-w-0">
-          <!-- LEFT GROUP -->
           <div class="flex items-center gap-4 whitespace-nowrap min-w-0">
-            <!-- Season Switcher (desktop) -->
             <div id="season-menu-wrapper" class="relative">
               <button
                 id="season-menu-btn"
@@ -69,7 +60,15 @@
                   style="background: rgba(231,175,178,0.20); color:#ff8000;"
                   role="menuitem"
                 >
-                  Team (5-stack) — Current
+                  Overview — Current
+                </a>
+
+                <a
+                  href="season26team.html"
+                  class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
+                  role="menuitem"
+                >
+                  Team (5-stack)
                 </a>
 
                 <a
@@ -118,20 +117,11 @@
               </div>
             </div>
 
-            <!-- In-page navigation (Team page) — updated order -->
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-player-cards">Mini Cards</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-matchlist-section">Match List</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#summary-section">Summary</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#objective-impact-section">Total Player Impact</button>
-            <!-- ✅ NEW -->
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#death-map-section">Death Map</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#team-synergy-section">Team Synergy</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#objective-win-impact-section">Objective Win Impact</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#lane-dynamics-section">Lane Dynamics</button>
-            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#splits">Splits</button>
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#overview-player-cards">Mini Cards</button>
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#overview-winrate-section">Winrate Web</button>
+            <button class="hover:text-[#ff8000] transition-colors" data-scroll="#overview-recent-section">Recent Matches</button>
           </div>
 
-          <!-- RIGHT GROUP -->
           <div class="ml-auto flex items-center gap-4 whitespace-nowrap">
             <div id="more-menu-wrapper" class="relative">
               <button
@@ -172,7 +162,8 @@
                   Version Tracker
                 </a>
 
-                <!-- ✅ NEW -->
+                <div class="my-2 border-t border-slate-200"></div>
+
                 <a
                   href="privacy.html"
                   class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors"
@@ -185,7 +176,6 @@
           </div>
         </nav>
 
-        <!-- Mobile Menu Toggle -->
         <button
           id="nav-toggle"
           class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700 ml-auto"
@@ -194,13 +184,12 @@
         </button>
       </div>
 
-      <!-- Mobile Nav Panel -->
       <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
         <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
-          <!-- Season links (mobile) -->
           <div class="py-2">
             <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
-            <a href="index.html" class="py-1 block font-semibold" style="color:#ff8000;">Team (5-stack) — Current</a>
+            <a href="index.html" class="py-1 block font-semibold" style="color:#ff8000;">Overview — Current</a>
+            <a href="season26team.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
             <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
             <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
             <a href="season26lp.html" class="py-1 block hover:text-[#ff8000]">LP Tracker</a>
@@ -214,52 +203,44 @@
 
           <div class="my-2 border-t border-slate-200"></div>
 
-          <!-- In-page navigation — updated order -->
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#team-player-cards">Mini Cards</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#team-matchlist-section">Match List</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#summary-section">Summary</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#objective-impact-section">Total Player Impact</button>
-          <!-- ✅ NEW -->
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#death-map-section">Death Map</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#team-synergy-section">Team Synergy</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#objective-win-impact-section">Objective Win Impact</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#lane-dynamics-section">Lane Dynamics</button>
-          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#splits">Splits</button>
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#overview-player-cards">Mini Cards</button>
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#overview-winrate-section">Winrate Web</button>
+          <button class="py-1 text-left hover:text-[#ff8000]" data-scroll="#overview-recent-section">Recent Matches</button>
 
           <div class="my-2 border-t border-slate-200"></div>
 
-          <!-- Linked pages -->
           <a href="metrics.html" class="py-1 text-left hover:text-[#ff8000]">Metric Glossary</a>
           <a href="methodology.html" class="py-1 text-left hover:text-[#ff8000]">Calculations</a>
           <a href="changelog.html" class="py-1 text-left hover:text-[#ff8000]">Version Tracker</a>
-
-          <!-- ✅ NEW -->
           <a href="privacy.html" class="py-1 text-left hover:text-[#ff8000]">Privacy Notice</a>
         </div>
       </div>
     </header>
 
-    <!-- =======================================
-         PAGE HEADER
-    ======================================== -->
     <section class="w-full">
       <div class="max-w-6xl mx-auto px-4 pt-6 pb-3">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 class="text-2xl sm:text-3xl font-bold leading-tight" style="color:#ff8000;">
-              Les Nübs — Season 26 (Team / 5-stack)
+              Les Nübs — Season 26 (Overview)
             </h1>
             <p class="text-xs sm:text-sm text-gray-600">
-              This view is for games where <span class="font-semibold">5 Les Nübs members</span> played together.
+              Combined overview for <span class="font-semibold">Solo/Duo + Flex (Team + Other Flex)</span>.
             </p>
           </div>
 
-          <!-- Quick toggle pills -->
           <div class="flex items-center gap-2 text-xs">
             <a
               href="index.html"
               class="px-3 py-1 rounded-full font-semibold"
               style="border:1px solid #e7afb2; background: rgba(231,175,178,0.18); color:#ff8000;"
+            >
+              Overview
+            </a>
+
+            <a
+              href="season26team.html"
+              class="px-3 py-1 rounded-full border border-slate-200 bg-white hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
             >
               Team (5)
             </a>
@@ -297,88 +278,42 @@
           </div>
         </div>
 
-        <p class="text-[0.7rem] text-gray-500 mt-2 italic">
-          We cookin' again boyz!
-        </p>
+        <p class="text-[0.7rem] text-gray-500 mt-2 italic">One glance. All ranked queues.</p>
       </div>
     </section>
 
-    <!-- =======================================
-         MAIN CONTENT
-    ======================================== -->
     <main class="w-full flex-1">
       <div id="sheet-container" class="max-w-6xl mx-auto px-4 pb-10">
-        <div id="status" class="text-xs text-gray-600 mb-4">
-          Loading Team (5-stack) view…
-        </div>
+        <div id="status" class="text-xs text-gray-600 mb-4">Loading overview…</div>
 
-        <!-- 1) MINI CARDS -->
-        <section id="team-player-cards" class="my-6">
+        <section id="overview-player-cards" class="my-6">
           <div class="flex items-center justify-between gap-3 mb-3">
             <div>
               <h2 class="text-lg font-semibold" style="color:#ff8000;">Player Mini Cards</h2>
-              <p class="text-xs text-gray-500">Team (5-stack) games — per-player season aggregates.</p>
-            </div>
-
-            <div class="flex items-center gap-2 text-xs">
-              <button class="px-3 py-1 rounded-full border border-slate-200 bg-white" disabled>Filter (soon)</button>
-              <button class="px-3 py-1 rounded-full border border-slate-200 bg-white" disabled>Sort (soon)</button>
+              <p class="text-xs text-gray-500">Combined player aggregates across Solo/Duo and Flex queues.</p>
             </div>
           </div>
 
-          <div id="player-mini-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+          <div id="overview-player-mini-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
         </section>
 
-        <!-- 2) MATCH LIST -->
-        <section id="team-matchlist-section" class="mb-8">
-          <div id="team-matchlist" class="dashboard-card"></div>
+        <section id="overview-winrate-section" class="mb-8">
+          <div id="overview-winrate-card" class="dashboard-card"></div>
         </section>
 
-        <!-- 3) TEAM SUMMARY -->
-        <section id="summary-section" class="mb-8">
-          <div id="team-summary" class="dashboard-card"></div>
+        <section id="overview-recent-section" class="mb-8">
+          <div id="overview-recent-card" class="dashboard-card"></div>
         </section>
-
-        <!-- 4) TPI -->
-        <section id="objective-impact-section" class="mb-8">
-          <div id="objective-impact" class="dashboard-card"></div>
-        </section>
-
-        <!-- 5) TEAM SYNERGY -->
-        <section id="team-synergy-section" class="mb-8">
-          <div id="team-synergy" class="dashboard-card"></div>
-        </section>
-
-        <!-- 6) Objective Win Impact (Team / 5-stack) -->
-        <section id="objective-win-impact-section" class="mb-8">
-          <div id="objective-win-impact" class="dashboard-card"></div>
-        </section>
-
-        <!-- 7) LANE DYNAMICS -->
-        <section id="lane-dynamics-section" class="mb-8">
-          <div id="lane-dynamics" class="dashboard-card"></div>
-        </section>
-
-        <!-- ✅ NEW (at the end, as requested): DEATH MAP -->
-        <section id="death-map-section" class="mb-8">
-          <div id="death-map" class="dashboard-card"></div>
-        </section>
-
-        <!-- Keep anchor for later -->
-        <section id="splits" class="mb-8"></section>
       </div>
     </main>
 
     <footer class="w-full border-t border-slate-200">
       <div class="max-w-6xl mx-auto px-4 py-4 text-center text-[0.7rem] text-gray-500">
-        Season 26 · Built by LeBenz &amp; Les Nübs staff · Team (5-stack) view
+        Season 26 · Built by LeBenz &amp; Les Nübs staff · Overview
       </div>
     </footer>
 
-    <!-- Shared nav behavior -->
     <script type="module" src="./core/nav.js"></script>
-
-    <!-- TEAM PAGE (modular) -->
-    <script type="module" src="./pages/season26team/index.js"></script>
+    <script type="module" src="./pages/season26overview/index.js"></script>
   </body>
 </html>

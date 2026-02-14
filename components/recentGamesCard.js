@@ -48,6 +48,72 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function num(v) {
+  if (v === null || v === undefined || v === "") return NaN;
+  const n = Number(String(v).replace(",", ".").trim());
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function pickAny(r, keys) {
+  if (!r) return "";
+  for (const k of keys) {
+    const v = r?.[k];
+    if (v != null && String(v).trim() !== "") return v;
+  }
+  const raw = r?._raw;
+  if (raw) {
+    for (const k of keys) {
+      const v = raw?.[k];
+      if (v != null && String(v).trim() !== "") return v;
+    }
+  }
+  return "";
+}
+
+/**
+ * Return duration in minutes if we can infer it from any common field.
+ * Supports:
+ * - TIME (your curated minutes)
+ * - duration_min / duration_s
+ * - gameDuration (Riot seconds) / gameDuration ms
+ * - any generic duration value (heuristic: >100 => seconds, >100000 => ms)
+ */
+function durationMinutes(r) {
+  // strongest/known fields first
+  const vTimeMin = pickAny(r, ["duration_min", "durationMin", "TIME", "Time", "time_min", "timeMin"]);
+  const nTimeMin = num(vTimeMin);
+  if (Number.isFinite(nTimeMin) && nTimeMin > 0) return nTimeMin;
+
+  // seconds-ish fields
+  const vSec = pickAny(r, [
+    "duration_s",
+    "durationS",
+    "durationSeconds",
+    "gameDuration",
+    "game_duration",
+    "p.gameDuration",
+    "Game Duration",
+    "Duration",
+  ]);
+  const nSecRaw = num(vSec);
+  if (Number.isFinite(nSecRaw) && nSecRaw > 0) {
+    // heuristic:
+    // - huge => ms
+    // - >100 => seconds (because minutes almost never >100 in LoL; also catches 240s remakes)
+    // - otherwise => minutes
+    if (nSecRaw > 100000) return nSecRaw / 60000; // ms -> min
+    if (nSecRaw > 100) return nSecRaw / 60;       // sec -> min
+    return nSecRaw;                                // already minutes
+  }
+
+  return null;
+}
+
+function isRemake(r) {
+  const dm = durationMinutes(r);
+  return dm != null && dm > 0 && dm < 5; // < 5 minutes
+}
+
 function kdaText(r) {
   const k = Number(r.kills || 0);
   const d = Number(r.deaths || 0);
@@ -56,6 +122,8 @@ function kdaText(r) {
 }
 
 function resultText(r) {
+  // ✅ Remake overrides win/loss
+  if (isRemake(r)) return "Remake";
   if (r.win === true) return "Win";
   if (r.win === false) return "Loss";
   return "—";
@@ -103,7 +171,7 @@ function stackInfoFromCount(n) {
   if (c <= 1) return { label: "Solo", count: 1, cls: "bg-sky-50 text-sky-700 border-sky-200" };
   if (c === 2) return { label: "Duo", count: 2, cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
   if (c === 3) return { label: "Trio", count: 3, cls: "bg-orange-50 text-orange-700 border-orange-200" };
-  return { label: "4-stack", count: 4, cls: "bg-purple-50 text-purple-700 border-purple-200" };
+  return { label: `${c}-stack`, count: c, cls: "bg-purple-50 text-purple-700 border-purple-200" };
 }
 
 function stackPill(nubCount) {
@@ -127,11 +195,86 @@ function queuePill(opts = {}) {
   `;
 }
 
+function queueInfoFromRow(row, opts = {}) {
+  if (typeof opts.queueLabelForRow === "function") {
+    const custom = opts.queueLabelForRow(row);
+    if (custom && typeof custom === "object") {
+      return {
+        id: custom.id ?? null,
+        label: String(custom.label ?? "—"),
+        cls: String(custom.cls ?? "bg-slate-50 text-slate-700 border-slate-200"),
+      };
+    }
+    if (custom != null && String(custom).trim() !== "") {
+      return {
+        id: null,
+        label: String(custom).trim(),
+        cls: "bg-slate-50 text-slate-700 border-slate-200",
+      };
+    }
+  }
+
+  const qid = num(pickAny(row, ["queueId", "queue", "Queue ID", "QueueId", "p.queueId"]));
+  if (qid === 420) {
+    return { id: 420, label: "Solo", cls: "bg-sky-50 text-sky-700 border-sky-200" };
+  }
+  if (qid === 440) {
+    return { id: 440, label: "Flex", cls: "bg-orange-50 text-orange-700 border-orange-200" };
+  }
+  if (Number.isFinite(qid) && qid > 0) {
+    return {
+      id: qid,
+      label: `Q${qid}`,
+      cls: "bg-slate-50 text-slate-700 border-slate-200",
+    };
+  }
+
+  const queueType = String(pickAny(row, ["queueType", "Queue Type", "queue_type"]))
+    .trim()
+    .toLowerCase();
+  if (queueType.includes("solo")) {
+    return { id: 420, label: "Solo", cls: "bg-sky-50 text-sky-700 border-sky-200" };
+  }
+  if (queueType.includes("flex")) {
+    return { id: 440, label: "Flex", cls: "bg-orange-50 text-orange-700 border-orange-200" };
+  }
+
+  return { id: null, label: "—", cls: "bg-slate-50 text-slate-700 border-slate-200" };
+}
+
+function rowQueuePill(row, opts = {}) {
+  const q = queueInfoFromRow(row, opts);
+  return `
+    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[0.65rem] font-semibold border ${q.cls}">
+      ${
+        q.id != null
+          ? `<span class="font-extrabold">${escapeHtml(q.id)}</span><span>${escapeHtml(q.label)}</span>`
+          : escapeHtml(q.label)
+      }
+    </span>
+  `;
+}
+
+function hydrateRecentGameIcons(scopeEl, iconFor) {
+  const imgs = Array.from(scopeEl.querySelectorAll("img[data-rg-champ]"));
+  if (!imgs.length) return;
+
+  void Promise.all(
+    imgs.map(async (img) => {
+      const champ = String(img.getAttribute("data-rg-champ") || "").trim();
+      if (!champ) return;
+      const url = await iconFor(champ);
+      if (url) img.src = url;
+    })
+  );
+}
+
 export async function mountRecentGamesCard(el, rows, opts = {}) {
   injectRecentGamesDuoStylesOnce();
 
   const limit = Number(opts.limit ?? 10);
   const groupSameMatch = opts.groupSameMatch !== false; // default true
+  const showQueueColumn = opts.showQueueColumn === true;
 
   // other-flex helpers
   const matchMeta = opts.matchMeta; // Map(matchId -> { nubCount, nubNames, otherCount })
@@ -219,21 +362,16 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
   async function iconFor(champ) {
     const c = String(champ ?? "").trim();
     if (!c) return "";
-    if (iconCache.has(c)) return iconCache.get(c);
-    try {
-      const url = await championSquareUrl(c);
-      iconCache.set(c, url || "");
-      return url || "";
-    } catch {
-      iconCache.set(c, "");
-      return "";
+    if (!iconCache.has(c)) {
+      iconCache.set(
+        c,
+        championSquareUrl(c)
+          .then((url) => url || "")
+          .catch(() => "")
+      );
     }
+    return iconCache.get(c);
   }
-
-  // pre-resolve icons for visible window
-  const champSet = new Set();
-  for (const m of matches) for (const p of m.participants) champSet.add(String(p.champion ?? "").trim());
-  await Promise.all([...champSet].map((c) => iconFor(c)));
 
   const subtitle = matches.length
     ? `Last ${matches.length} · newest ${formatDDMonYY(matches[0].date)}`
@@ -242,12 +380,17 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
   const rowsHtml = matches
     .map((m) => {
       const rep = m.rep;
+
       const res = resultText(rep);
+
+      // ✅ violet tone for remakes
       const resClass =
         res === "Win"
           ? "text-emerald-700"
           : res === "Loss"
           ? "text-rose-700"
+          : res === "Remake"
+          ? "text-violet-700"
           : "text-slate-700";
 
       // stable order
@@ -304,12 +447,12 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
       const champsHtml = ps
         .map((p) => {
           const champ = String(p.champion ?? "—");
-          const url = iconCache.get(String(p.champion ?? "").trim()) || "";
+          const hasChamp = champ && champ !== "—";
           return `
             <div class="flex items-center gap-2">
               ${
-                url
-                  ? `<img src="${url}" alt="" class="w-5 h-5 rounded-md border border-slate-200 bg-white" loading="lazy" referrerpolicy="no-referrer" />`
+                hasChamp
+                  ? `<img data-rg-champ="${escapeHtml(champ)}" src="" alt="" class="w-5 h-5 rounded-md border border-slate-200 bg-white" loading="lazy" referrerpolicy="no-referrer" />`
                   : `<span class="inline-block w-5 h-5 rounded-md border border-slate-200 bg-white"></span>`
               }
               <span class="text-slate-700">${escapeHtml(champ)}</span>
@@ -322,12 +465,14 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
       const kdaHtml = ps
         .map((p) => `<div class="text-slate-700"><span class="font-semibold">${escapeHtml(kdaText(p))}</span></div>`)
         .join("");
+      const queueCell = showQueueColumn ? `<td>${rowQueuePill(rep, opts)}</td>` : "";
 
       const matchIdHint = m.matchId ? ` title="Match: ${escapeHtml(m.matchId)}"` : "";
 
       return `
         <tr>
           <td${matchIdHint}>${escapeHtml(formatDDMonYY(m.date))}</td>
+          ${queueCell}
           <td>
             ${stackLine}
             <div class="rg-players ${isDuoVisible ? "rg-duo" : ""} flex flex-col gap-1">${playersHtml}</div>
@@ -355,6 +500,7 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
         <thead>
           <tr>
             <th style="width: 120px;">Date</th>
+            ${showQueueColumn ? '<th style="width: 94px;">Queue</th>' : ""}
             <th>Players</th>
             <th>Champs</th>
             <th style="width: 110px;">Role</th>
@@ -363,9 +509,14 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
           </tr>
         </thead>
         <tbody>
-          ${rowsHtml || `<tr><td colspan="6" class="text-slate-500">No valid games.</td></tr>`}
+          ${
+            rowsHtml ||
+            `<tr><td colspan="${showQueueColumn ? 7 : 6}" class="text-slate-500">No valid games.</td></tr>`
+          }
         </tbody>
       </table>
     </div>
   `;
+
+  hydrateRecentGameIcons(el, iconFor);
 }

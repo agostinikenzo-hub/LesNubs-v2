@@ -11,7 +11,13 @@ import { mountUnlockableCard } from "./lockedFeatureCard.js";
  * - Player color chips legend
  * - Unlock gating (unlockInDays)
  * - Replay reliably re-triggers draw animation (JS-based)
- * - ✅ Weekly toggle: downsample to “last snapshot of each week” per player+queue
+ *
+ * ✅ Weekly toggle:
+ *   - 1 point per week per player+queue
+ *   - Uses the BEST snapshot of the week (highest rank; tie -> higher LP; tie -> latest)
+ *   - Carry-forward continuity: missing weeks repeat last known value
+ *   - Does NOT draw anything before a player’s first week (late starters don’t start at season start)
+ *   - Domain (t0/t1) always based on RAW season range (weekly won’t “shrink” the season)
  *
  * Mount:
  *   await mountLpTimelineModule(mountEl, { csvUrl, rosterOrder, title, unlockInDays, defaultMode, defaultFocus, defaultWeekly })
@@ -245,7 +251,7 @@ function rankPts(rankIndex) {
   return Math.round(x * 100);
 }
 
-// 🎨 Updated cohesive 7-color palette (your picks)
+// 🎨 7-color palette
 const PLAYER_PALETTE = ["#A8F3D5", "#FD8E20", "#F3E112", "#CE221B", "#216496", "#D2F4FE", "#290519"];
 
 function playerColorByIndex(i) {
@@ -313,57 +319,149 @@ function buildSeries(rows) {
 }
 
 /* ==========================
-   ✅ Weekly downsample helpers
-   - Week starts Monday (local time)
-   - Keep the LAST snapshot in each week
+   ✅ Weekly grid + best-per-week + carry-forward continuity
    ========================== */
 
-function weekKeyLocal(d) {
+function weekStartLocal(d) {
   if (!(d instanceof Date) || isNaN(d.getTime())) return null;
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   // Monday = 0 ... Sunday = 6
   const day = (x.getDay() + 6) % 7;
   x.setDate(x.getDate() - day);
+  return x;
+}
+
+function weekKeyLocal(d) {
+  const x = weekStartLocal(d);
+  if (!x) return null;
   const yy = x.getFullYear();
   const mm = String(x.getMonth() + 1).padStart(2, "0");
   const dd = String(x.getDate()).padStart(2, "0");
   return `${yy}-${mm}-${dd}`; // week start date
 }
 
-function downsampleWeekly(series = []) {
-  if (!Array.isArray(series) || series.length <= 1) return series.slice();
-  const out = [];
+function addDays(d, days) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + days);
+  return x;
+}
 
-  let curKey = null;
-  let last = null;
+function buildWeekGridFromRows(rows) {
+  // overall season window from raw snapshots
+  let minT = Infinity;
+  let maxT = -Infinity;
 
-  for (const r of series) {
-    const t = r?.snapshotDate;
-    const k = weekKeyLocal(t);
-    if (!k) continue;
-
-    if (curKey == null) curKey = k;
-
-    if (k !== curKey) {
-      if (last) out.push(last);
-      curKey = k;
-      last = r;
-    } else {
-      last = r; // keep updating, so we end with last snapshot of the week
-    }
+  for (const r of rows || []) {
+    const t = r?.snapshotDate?.getTime?.();
+    if (!Number.isFinite(t)) continue;
+    minT = Math.min(minT, t);
+    maxT = Math.max(maxT, t);
   }
 
-  if (last) out.push(last);
+  if (!Number.isFinite(minT) || !Number.isFinite(maxT) || minT === Infinity || maxT === -Infinity) return [];
+
+  const start = weekStartLocal(new Date(minT));
+  const end = weekStartLocal(new Date(maxT));
+  if (!start || !end) return [];
+
+  const out = [];
+  let cur = new Date(start);
+  const endT = end.getTime();
+
+  while (cur.getTime() <= endT) {
+    out.push(new Date(cur));
+    cur = addDays(cur, 7);
+  }
   return out;
 }
 
-function buildWeeklySeriesMap(seriesMap) {
+function bestWeeklyPick(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+
+  const va = rankPts(a.rankIndex);
+  const vb = rankPts(b.rankIndex);
+
+  const na = Number.isFinite(va) ? va : -Infinity;
+  const nb = Number.isFinite(vb) ? vb : -Infinity;
+
+  if (nb !== na) return nb > na ? b : a;
+
+  const la = Number(a.lp ?? 0);
+  const lb = Number(b.lp ?? 0);
+  if (lb !== la) return lb > la ? b : a;
+
+  const ta = a.snapshotDate?.getTime?.() ?? 0;
+  const tb = b.snapshotDate?.getTime?.() ?? 0;
+  return tb >= ta ? b : a; // latest wins tie
+}
+
+function cloneForWeek(row, weekStart, { carry = false, srcDate = null } = {}) {
+  // snapshotDate is the week anchor for consistent x spacing
+  const out = { ...(row || {}) };
+  out.snapshotDate = new Date(weekStart);
+  out._weekly = true;
+  out._carry = !!carry;
+  out._srcDate = srcDate instanceof Date ? new Date(srcDate) : srcDate ? new Date(srcDate) : null;
+  return out;
+}
+
+function weeklyBestWithCarry(series = [], weekGrid = []) {
+  if (!Array.isArray(series) || series.length === 0) return [];
+
+  // bucket best snapshot per week
+  const buckets = new Map(); // weekKey -> bestRow
+  for (const r of series) {
+    const k = weekKeyLocal(r?.snapshotDate);
+    if (!k) continue;
+    buckets.set(k, bestWeeklyPick(buckets.get(k), r));
+  }
+
+  if (!buckets.size) return [];
+
+  // find first week index where this player has data (so we don't draw before they exist)
+  let firstIdx = -1;
+  for (let i = 0; i < weekGrid.length; i++) {
+    const k = weekKeyLocal(weekGrid[i]);
+    if (k && buckets.has(k)) {
+      firstIdx = i;
+      break;
+    }
+  }
+  if (firstIdx === -1) return [];
+
+  const out = [];
+  let lastReal = null;
+
+  for (let i = firstIdx; i < weekGrid.length; i++) {
+    const ws = weekGrid[i];
+    const k = weekKeyLocal(ws);
+    if (!k) continue;
+
+    const hit = buckets.get(k) || null;
+
+    if (hit) {
+      lastReal = hit;
+      out.push(cloneForWeek(hit, ws, { carry: false, srcDate: hit.snapshotDate }));
+      continue;
+    }
+
+    if (lastReal) {
+      const src = lastReal._srcDate || lastReal.snapshotDate;
+      out.push(cloneForWeek(lastReal, ws, { carry: true, srcDate: src }));
+    }
+  }
+
+  return out;
+}
+
+function buildWeeklySeriesMap(seriesMap, weekGrid) {
   const out = new Map();
   for (const [id, qs] of seriesMap.entries()) {
     out.set(id, {
-      SOLO: downsampleWeekly(qs?.SOLO || []),
-      FLEX: downsampleWeekly(qs?.FLEX || []),
+      SOLO: weeklyBestWithCarry(qs?.SOLO || [], weekGrid),
+      FLEX: weeklyBestWithCarry(qs?.FLEX || [], weekGrid),
     });
   }
   return out;
@@ -412,10 +510,13 @@ function scaleY(v, v0, v1, y0, y1) {
 function render(mountEl, state) {
   const { title, mode, focusRiotId, rosterOrder } = state;
 
-  // ✅ choose raw vs weekly series map
-  const seriesMap = state.weekly ? state.seriesMapWeekly : state.seriesMapRaw;
+  // plot data depends on weekly toggle
+  const plotSeriesMap = state.weekly ? state.seriesMapWeekly : state.seriesMapRaw;
 
-  const players = [...seriesMap.keys()];
+  // domain always from raw (prevents weekly from shrinking the season)
+  const domainSeriesMap = state.seriesMapRaw;
+
+  const players = [...plotSeriesMap.keys()];
   const order = rosterOrder.map((x) => String(x).trim());
 
   players.sort((a, b) => {
@@ -429,16 +530,16 @@ function render(mountEl, state) {
     return sa.localeCompare(sb);
   });
 
-  // Stable color mapping based on sorted players list
+  // Stable color mapping
   const colorById = new Map();
   players.forEach((id, i) => colorById.set(id, playerColorByIndex(i)));
 
   const visiblePlayers = focusRiotId ? players.filter((p) => p === focusRiotId) : players;
 
-  // collect points for domain
+  // domain points from RAW
   const allPts = [];
   for (const riotId of visiblePlayers) {
-    const qs = seriesMap.get(riotId);
+    const qs = domainSeriesMap.get(riotId);
     for (const q of ["SOLO", "FLEX"]) {
       if (mode !== "BOTH" && mode !== q) continue;
       const series = qs?.[q] || [];
@@ -462,10 +563,6 @@ function render(mountEl, state) {
   const y1 = H - pad.b;
 
   const baselineY = scaleY(0, v0, v1, y0, y1);
-
-  // smoothing helper
-  const spanT = Math.max(1, t1 - t0);
-  const maxBackMs = Math.min(14 * 86400000, Math.max(1 * 86400000, Math.round(spanT * 0.12)));
 
   // ticks
   const grid = [];
@@ -492,7 +589,7 @@ function render(mountEl, state) {
   for (const riotId of visiblePlayers) {
     const name = safeName(riotId);
     const col = colorById.get(riotId) || PLAYER_PALETTE[0];
-    const qs = seriesMap.get(riotId) || { SOLO: [], FLEX: [] };
+    const qs = plotSeriesMap.get(riotId) || { SOLO: [], FLEX: [] };
 
     for (const q of ["SOLO", "FLEX"]) {
       if (mode !== "BOTH" && mode !== q) continue;
@@ -513,11 +610,15 @@ function render(mountEl, state) {
 
       const ptsLine = ptsActual.slice();
 
-      // baseline smooth start (synthetic point, no dot)
+      // baseline "join" before first ranked point
       if (ptsLine[0].v > 0) {
         const firstT = ptsLine[0].t;
-        let synthT = focusRiotId ? t0 : Math.max(t0, firstT - maxBackMs);
-        if (synthT >= firstT) synthT = Math.max(t0, firstT - 1);
+
+        let synthT = Math.max(t0, firstT - 1);
+        if (state.weekly) {
+          const ws = weekStartLocal(new Date(firstT))?.getTime?.();
+          if (Number.isFinite(ws)) synthT = Math.max(t0, Math.min(firstT - 1, ws));
+        }
 
         ptsLine.unshift({ x: scaleX(synthT, t0, t1, x0, x1), y: baselineY, t: synthT, v: 0, r: null });
       }
@@ -533,10 +634,19 @@ function render(mountEl, state) {
 
       const dotPoints = showAllDots ? ptsActual : [ptsActual[ptsActual.length - 1]];
       for (const p of dotPoints) {
-        const dateStr = fmtDateShort(new Date(p.t));
+        const weekDateStr = fmtDateShort(new Date(p.t));
+        const srcDate = p.r?._srcDate instanceof Date ? p.r._srcDate : p.r?._srcDate ? new Date(p.r._srcDate) : null;
+
+        const shownDate = state.weekly ? weekDateStr : fmtDateShort(new Date(p.t));
+        const extra =
+          state.weekly && srcDate
+            ? `\n${p.r?._carry ? "Carried from" : "Best snapshot"} ${fmtDateShort(srcDate)}`
+            : "";
+
         const rankLabel = p.r?.currentRank || (p.v === 0 ? "UNRANKED" : "");
         const lp = Number(p.r?.lp ?? 0);
-        const tip = `${name} — ${q}\n${dateStr}\n${rankLabel}${p.v === 0 ? "" : ` · ${lp} LP`}`;
+
+        const tip = `${name} — ${q}\n${shownDate}${extra}\n${rankLabel}${p.v === 0 ? "" : ` · ${lp} LP`}`;
 
         dots.push(`
           <g class="lpTL-dotg" data-riotid="${esc(riotId)}" data-queue="${q}">
@@ -585,9 +695,8 @@ function render(mountEl, state) {
     return b;
   };
 
-  // ✅ Weekly toggle pill (small chip)
   const weeklyPill = el("button", "lpTL-pill" + (state.weekly ? " is-on" : ""), "Weekly");
-  weeklyPill.title = "Weekly smoothing (keeps the last snapshot of each week)";
+  weeklyPill.title = "Weekly: 1 point/week (best snapshot + carry-forward continuity)";
   weeklyPill.addEventListener("click", () => {
     state.weekly = !state.weekly;
     render(mountEl, state);
@@ -640,12 +749,13 @@ function render(mountEl, state) {
       <span class="lpTL-chip"><span class="lpTL-dot lpTL-dot--flex"></span> FLEX = dashed</span>
       <span class="lpTL-chip">UNRANKED pinned at baseline</span>
       <span class="lpTL-chip">Focus: <span style="font-weight:900; color:#0f172a;">${esc(focusName)}</span></span>
-      <span class="lpTL-chip">Granularity: <span style="font-weight:900; color:#0f172a;">${state.weekly ? "Weekly (last snapshot)" : "All snapshots"}</span></span>
+      <span class="lpTL-chip">Granularity: <span style="font-weight:900; color:#0f172a;">${
+        state.weekly ? "Weekly (best + carry-forward)" : "All snapshots"
+      }</span></span>
     `
   );
   shell.appendChild(legend);
 
-  // ✅ Player color chips legend
   const idsForLegend = focusRiotId ? visiblePlayers : players;
   const playerLegend = el(
     "div",
@@ -688,7 +798,6 @@ function render(mountEl, state) {
   const allPaths = [...svg.querySelectorAll(".lpTL-path")];
   const allDotGroups = [...svg.querySelectorAll(".lpTL-dotg")];
 
-  // Hover highlight: dim others (paths + dots)
   function dimExcept(riotId) {
     allPaths.forEach((p) => {
       const id = p.getAttribute("data-riotid");
@@ -711,7 +820,7 @@ function render(mountEl, state) {
     g.addEventListener("mouseleave", () => dimExcept(null));
   });
 
-  // ✅ Replay animation that always works (JS-based)
+  // Replay animation
   state._animateReplay = () => {
     if (state._replayTimer) clearTimeout(state._replayTimer);
 
@@ -760,7 +869,7 @@ export async function mountLpTimelineModule(
     unlockInDays = 0,
     defaultMode = "BOTH",
     defaultFocus = "",
-    defaultWeekly = false, // ✅ new
+    defaultWeekly = false,
   } = {}
 ) {
   injectStylesOnce();
@@ -804,14 +913,19 @@ export async function mountLpTimelineModule(
   }
 
   const seriesMapRaw = buildSeries(rows);
-  const seriesMapWeekly = buildWeeklySeriesMap(seriesMapRaw);
+
+  // ✅ Build a global week grid for the season range
+  const weekGrid = buildWeekGridFromRows(rows);
+
+  // ✅ Weekly map uses best snapshot per week + carry forward continuity
+  const seriesMapWeekly = buildWeeklySeriesMap(seriesMapRaw, weekGrid);
 
   const state = {
     title,
     rosterOrder,
     seriesMapRaw,
     seriesMapWeekly,
-    weekly: !!defaultWeekly, // ✅ new
+    weekly: !!defaultWeekly,
     mode: defaultMode,
     focusRiotId: defaultFocus,
     _animateReplay: null,

@@ -8,6 +8,9 @@
 // - No fetching inside; pass timelineRows in.
 // - Keeps local phase state per mount element.
 // - Uses the Season 26 timeline headers as-is.
+// - ✅ Resilient to pipeline changes:
+//    - derives Minute from Timestamp if Minute missing
+//    - tries to recover Match ID (or infers synthetic IDs if missing)
 
 function ldGetAny(row, keys) {
   for (const k of keys) {
@@ -37,7 +40,117 @@ function ldEscapeHTML(s) {
 }
 
 function ldGetMatchId(r) {
-  return String(ldGetAny(r, ["Match ID", "MatchID", "Game ID", "Game #", "Date"])).trim();
+  // Core loader should ideally guarantee "Match ID", but keep this resilient.
+  return String(
+    ldGetAny(r, [
+      "Match ID",
+      "MatchID",
+      "MatchId",
+      "matchId",
+      "match_id",
+      "Game ID",
+      "GameID",
+      "GameId",
+      "gameId",
+      "p.matchId",
+      "pf.matchId",
+      "metadata.matchId",
+      "info.gameId",
+      "Game #",
+      "Date",
+    ])
+  ).trim();
+}
+
+function ldGetTimestampMs(r) {
+  const raw = ldGetAny(r, ["Timestamp", "timestamp", "Time", "time", "Game Time", "GameTime", "TimeMs", "Time (ms)"]);
+  if (raw === "" || raw === null || raw === undefined) return 0;
+
+  const n = parseFloat(String(raw).replace(",", "."));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+
+  // Heuristic: < 2000 likely seconds, otherwise ms
+  return n < 2000 ? n * 1000 : n;
+}
+
+function ldGetMinute(r) {
+  // Prefer real Minute if present
+  const rawMin = ldGetAny(r, ["Minute", "minute", "Min", "min"]);
+  if (rawMin !== "" && rawMin !== null && rawMin !== undefined) {
+    const m = parseFloat(String(rawMin).replace(",", "."));
+    if (Number.isFinite(m) && m > 0) return Math.round(m);
+  }
+
+  // Fallback to Timestamp (ms/seconds)
+  const tsMs = ldGetTimestampMs(r);
+  if (!tsMs) return 0;
+
+  // floor is safer than round (prevents jumping minutes early)
+  return Math.max(0, Math.floor(tsMs / 60000));
+}
+
+/**
+ * Normalize timeline rows so this card survives pipeline header changes:
+ * - Ensures r["Minute"] exists (derived from Timestamp)
+ * - Ensures r["Match ID"] exists:
+ *    - if some rows have match id keys, normalize and propagate
+ *    - otherwise infer synthetic match ids by Timestamp resets (when match blocks are appended)
+ */
+function normalizeLaneTimelineRows(rows) {
+  const arr = Array.isArray(rows) ? rows.slice() : [];
+  if (!arr.length) return arr;
+
+  // 1) Ensure Minute
+  for (const r of arr) {
+    if (!r) continue;
+    if (String(r["Minute"] ?? "").trim() === "") r["Minute"] = ldGetMinute(r);
+  }
+
+  // 2) Normalize Match ID if present in any form, and propagate through contiguous chunks
+  let foundAny = false;
+  let currentMid = "";
+
+  for (const r of arr) {
+    if (!r) continue;
+    const mid = ldGetMatchId(r);
+    if (mid) {
+      r["Match ID"] = mid;
+      currentMid = mid;
+      foundAny = true;
+    } else if (currentMid) {
+      // If pipeline only provided match id on some rows, keep continuity
+      r["Match ID"] = currentMid;
+    }
+  }
+
+  if (foundAny) return arr;
+
+  // 3) No match ids anywhere -> infer synthetic ids by Timestamp resets
+  // Assumes CSV is appended match-by-match so timestamp goes up then restarts near 0.
+  let matchIdx = 0;
+  let lastTs = -Infinity;
+  let seenPast3Min = false;
+
+  for (const r of arr) {
+    if (!r) continue;
+    const ts = ldGetTimestampMs(r); // 0 if missing
+
+    // only attempt reset detection when timestamp is present
+    if (ts > 0) {
+      if (seenPast3Min && ts < lastTs - 120000) {
+        matchIdx += 1;
+        seenPast3Min = false;
+      }
+      if (ts >= 180000) seenPast3Min = true;
+      lastTs = ts;
+    }
+
+    if (String(r["Match ID"] ?? "").trim() === "") {
+      r["Match ID"] = `SYN_${matchIdx}`;
+    }
+  }
+
+  return arr;
 }
 
 function ldGetPlayer(r) {
@@ -73,7 +186,7 @@ function buildMatchLengthsLD26(rows) {
   rows.forEach((r) => {
     const id = ldGetMatchId(r);
     if (!id) return;
-    const m = ldNum(ldGetAny(r, ["Minute"]));
+    const m = ldGetMinute(r);
     if (!len[id] || m > len[id]) len[id] = m;
   });
   return len;
@@ -224,7 +337,10 @@ function bindPhaseButtons(mountEl) {
 function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
   const state = ensureState(mountEl, opts);
 
-  const allTimeline = Array.isArray(timelineRows) ? timelineRows : [];
+  // ✅ Normalize pipeline-changed timeline rows
+  const rawTimeline = Array.isArray(timelineRows) ? timelineRows : [];
+  const allTimeline = normalizeLaneTimelineRows(rawTimeline);
+
   if (!allTimeline.length) {
     mountEl.innerHTML = `
       <div class="card-header">
@@ -237,15 +353,24 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
     return;
   }
 
-  // Cache for phase buttons rerender
+  // Cache for phase buttons rerender (store normalized rows)
   state.cachedSeasonRows = seasonRows || null;
   state.cachedTimelineRows = allTimeline;
 
   // Filter timeline to match IDs that exist in seasonRows (keeps “season scope”)
+  // ✅ BUT: if timeline only has synthetic ids, don't hard-filter to empty.
   let timelineScoped = allTimeline;
+
   if (Array.isArray(seasonRows) && seasonRows.length) {
     const seasonSet = new Set(seasonRows.map(ldGetMatchId).filter(Boolean));
-    if (seasonSet.size) timelineScoped = allTimeline.filter((r) => seasonSet.has(ldGetMatchId(r)));
+
+    const timelineIds = [...new Set(allTimeline.map(ldGetMatchId).filter(Boolean))];
+    const hasOnlySynthetic = timelineIds.length && timelineIds.every((id) => String(id).startsWith("SYN_"));
+
+    if (seasonSet.size && !hasOnlySynthetic) {
+      const filtered = allTimeline.filter((r) => seasonSet.has(ldGetMatchId(r)));
+      if (filtered.length) timelineScoped = filtered; // only apply if it actually matches something
+    }
   }
 
   const gameSet = new Set(timelineScoped.map(ldGetMatchId).filter(Boolean));
@@ -303,7 +428,7 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
   const totalTimelineGames = allGameIds.size || 1;
 
   const perPlayerRole = {}; // player|role
-  const perFrame = {};      // bot+sup duos frames
+  const perFrame = {}; // bot+sup duos frames
   const duoStats = {};
   const jungleStats = {};
 
@@ -316,7 +441,7 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
     const matchId = ldGetMatchId(r);
     if (!player || !matchId) return;
 
-    const minute = ldNum(r["Minute"]);
+    const minute = ldGetMinute(r);
     const role = normLaneRoleLD26(r) || "UNKNOWN";
     const teamId = ldNum(r["TeamId"]) || 0;
 
@@ -333,8 +458,13 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
       inhibs: ldNum(r["Team Inhibitors"]),
     };
     const gotObj =
-      cur.drag > prev.drag || cur.herald > prev.herald || cur.baron > prev.baron ||
-      cur.grubs > prev.grubs || cur.atak > prev.atak || cur.towers > prev.towers || cur.inhibs > prev.inhibs;
+      cur.drag > prev.drag ||
+      cur.herald > prev.herald ||
+      cur.baron > prev.baron ||
+      cur.grubs > prev.grubs ||
+      cur.atak > prev.atak ||
+      cur.towers > prev.towers ||
+      cur.inhibs > prev.inhibs;
 
     if (gotObj) objectiveEvents[`${matchId}|${teamId}|${minute}`] = true;
     objTrack[objKey] = cur;
@@ -382,7 +512,7 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
     pr.laneControlSum += control;
 
     const combinedBehind = goldDiff <= -300 || xpDiff <= -1 || csDiff <= -15;
-    const combinedAhead  = goldDiff >= 150  || xpDiff >= 0.5 || csDiff >= 8;
+    const combinedAhead = goldDiff >= 150 || xpDiff >= 0.5 || csDiff >= 8;
 
     if (!combinedBehind) pr.goodMinutes += 1;
     if (combinedBehind) pr.hardLosingMinutes += 1;
@@ -403,14 +533,12 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
       if (phase === "early") pressureSinkMinute = true;
       else if (phase === "mid")
         pressureSinkMinute = (goldDiff <= -400 || xpDiff <= -1.5 || csDiff <= -20) && closeTeammates >= 2;
-      else
-        pressureSinkMinute = (goldDiff <= -600 || xpDiff <= -2) && closeTeammates >= 3;
+      else pressureSinkMinute = (goldDiff <= -600 || xpDiff <= -2) && closeTeammates >= 3;
     }
     if (pressureSinkMinute) pr.sinkMinutes += 1;
 
     // Playmaker: out of lane + stable
-    const outOfLane =
-      laneZone && zone && laneZone !== zone && (inRiver || isGrouped || closeTeammates >= 2);
+    const outOfLane = laneZone && zone && laneZone !== zone && (inRiver || isGrouped || closeTeammates >= 2);
     if (outOfLane && !combinedBehind) pr.roamPlayMinutes += 1;
 
     // Botlane duo frames
@@ -518,8 +646,7 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
     if (combinedBehind) d.hardLosingMinutes += 1;
 
     const outOfLane =
-      (bot.laneZone && bot.zone && bot.laneZone !== bot.zone) ||
-      (sup.laneZone && sup.zone && sup.laneZone !== sup.zone);
+      (bot.laneZone && bot.zone && bot.laneZone !== bot.zone) || (sup.laneZone && sup.zone && sup.laneZone !== sup.zone);
 
     if (outOfLane && !combinedBehind) d.playMinutes += 1;
 
@@ -666,9 +793,7 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
 
   // Mini cards
   const ldTopPlaymaker =
-    [...withPlayerMetrics]
-      .filter((p) => !p.isGuest && p.games >= 5)
-      .sort((a, b) => b.playmaker - a.playmaker)[0] || null;
+    [...withPlayerMetrics].filter((p) => !p.isGuest && p.games >= 5).sort((a, b) => b.playmaker - a.playmaker)[0] || null;
 
   const ldBestDuo = duoRows[0] || null;
 
@@ -703,38 +828,45 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
   const playerRowsHTML = withPlayerMetrics
     .map((p) => {
       const lcColor =
-        p.laneControl >= 15 ? "text-emerald-600" :
-        p.laneControl >= 5  ? "text-sky-600" :
-        p.laneControl <= -10 ? "text-red-500" : "text-gray-700";
+        p.laneControl >= 15 ? "text-emerald-600" : p.laneControl >= 5 ? "text-sky-600" : p.laneControl <= -10 ? "text-red-500" : "text-gray-700";
 
-      const relColor =
-        p.reliability >= 75 ? "text-emerald-600" :
-        p.reliability <= 55 ? "text-red-500" : "text-gray-700";
+      const relColor = p.reliability >= 75 ? "text-emerald-600" : p.reliability <= 55 ? "text-red-500" : "text-gray-700";
 
-      const playColor =
-        p.playmaker >= 14 ? "text-emerald-600" :
-        p.playmaker >= 8  ? "text-sky-600" : "text-gray-500";
+      const playColor = p.playmaker >= 14 ? "text-emerald-600" : p.playmaker >= 8 ? "text-sky-600" : "text-gray-500";
 
       const sinkColor = p.pressureSink >= 12 ? "text-red-500" : "text-gray-500";
 
       const tagTone =
-        p.tag.startsWith("Lane Rock") ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-        p.tag.startsWith("Playmaker") ? "bg-sky-50 text-sky-700 border-sky-100" :
-        p.tag.startsWith("Resource Carry") ? "bg-amber-50 text-amber-800 border-amber-100" :
-        p.tag.includes("Pressure Sink") ? "bg-red-50 text-red-700 border-red-100" :
-        p.tag.startsWith("Guest") ? "bg-violet-50 text-violet-700 border-violet-100" :
-        "bg-slate-50 text-slate-700 border-slate-100";
+        p.tag.startsWith("Lane Rock")
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : p.tag.startsWith("Playmaker")
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : p.tag.startsWith("Resource Carry")
+          ? "bg-amber-50 text-amber-800 border-amber-100"
+          : p.tag.includes("Pressure Sink")
+          ? "bg-red-50 text-red-700 border-red-100"
+          : p.tag.startsWith("Guest")
+          ? "bg-violet-50 text-violet-700 border-violet-100"
+          : "bg-slate-50 text-slate-700 border-slate-100";
 
       const investmentTag = p.investmentTag || "";
       const invTooltip = investmentTag ? getInvestmentTooltipLD26(investmentTag) : "";
       const invTone =
-        investmentTag === "Island Safe" ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-        investmentTag === "Low-Maintenance" ? "bg-emerald-50/60 text-emerald-700 border-emerald-100" :
-        investmentTag === "Invest Pays Off" ? "bg-sky-50 text-sky-700 border-sky-100" :
-        investmentTag === "Setup Lane" ? "bg-sky-50/70 text-sky-700 border-sky-100" :
-        investmentTag === "Volatile Duelist" ? "bg-amber-50 text-amber-800 border-amber-100" :
-        investmentTag === "Needs Cover" ? "bg-orange-50 text-orange-800 border-orange-100" :
-        investmentTag === "Resource Trap" ? "bg-red-50 text-red-700 border-red-100" : "";
+        investmentTag === "Island Safe"
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : investmentTag === "Low-Maintenance"
+          ? "bg-emerald-50/60 text-emerald-700 border-emerald-100"
+          : investmentTag === "Invest Pays Off"
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : investmentTag === "Setup Lane"
+          ? "bg-sky-50/70 text-sky-700 border-sky-100"
+          : investmentTag === "Volatile Duelist"
+          ? "bg-amber-50 text-amber-800 border-amber-100"
+          : investmentTag === "Needs Cover"
+          ? "bg-orange-50 text-orange-800 border-orange-100"
+          : investmentTag === "Resource Trap"
+          ? "bg-red-50 text-red-700 border-red-100"
+          : "";
 
       const guestStar = p.isGuest
         ? `<span class="ml-1 text-[0.6rem] text-violet-500" title="Plays &lt;10% of games in this phase scope">⭐</span>`
@@ -789,25 +921,22 @@ function renderLaneDynamicsInner(mountEl, seasonRows, timelineRows, opts = {}) {
   const duoRowsHTML = duoRows
     .map((d) => {
       const lcColor =
-        d.laneControl >= 10 ? "text-emerald-600" :
-        d.laneControl >= 3  ? "text-sky-600" :
-        d.laneControl <= -8 ? "text-red-500" : "text-gray-700";
+        d.laneControl >= 10 ? "text-emerald-600" : d.laneControl >= 3 ? "text-sky-600" : d.laneControl <= -8 ? "text-red-500" : "text-gray-700";
 
-      const relColor =
-        d.reliability >= 70 ? "text-emerald-600" :
-        d.reliability <= 55 ? "text-red-500" : "text-gray-700";
+      const relColor = d.reliability >= 70 ? "text-emerald-600" : d.reliability <= 55 ? "text-red-500" : "text-gray-700";
 
-      const playColor =
-        d.playmaker >= 12 ? "text-emerald-600" :
-        d.playmaker >= 6  ? "text-sky-600" : "text-gray-500";
+      const playColor = d.playmaker >= 12 ? "text-emerald-600" : d.playmaker >= 6 ? "text-sky-600" : "text-gray-500";
 
       const sinkColor = d.pressureSink >= 12 ? "text-red-500" : "text-gray-500";
 
       const tagTone =
-        d.tag.includes("Rock") ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-        d.tag.includes("Playmaker") ? "bg-sky-50 text-sky-700 border-sky-100" :
-        d.tag.includes("Pressure Sink") ? "bg-red-50 text-red-700 border-red-100" :
-        "bg-slate-50 text-slate-700 border-slate-100";
+        d.tag.includes("Rock")
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : d.tag.includes("Playmaker")
+          ? "bg-sky-50 text-sky-700 border-sky-100"
+          : d.tag.includes("Pressure Sink")
+          ? "bg-red-50 text-red-700 border-red-100"
+          : "bg-slate-50 text-slate-700 border-slate-100";
 
       const profileTooltip = getProfileTooltipLD26(d.tag);
 

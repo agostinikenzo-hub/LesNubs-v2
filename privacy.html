@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Les Nübs — Privacy Notice</title>
 
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+
     <!-- Keep consistent styling with the site (if you still use them) -->
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="season26.css" />
@@ -81,7 +87,159 @@
     </style>
   </head>
 
-  <body class="s26">
+  <body class="s26 fade-bg min-h-screen flex flex-col bg-slate-50 text-gray-800">
+    <!-- =======================================
+         TOP NAVIGATION / APP SHELL (S26 standard)
+    ======================================== -->
+    <header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-5">
+        <!-- Brand -->
+        <div class="flex items-center gap-2 shrink-0">
+          <div
+            class="w-8 h-8 rounded-xl flex items-center justify-center text-white text-xs font-bold"
+            style="background: linear-gradient(135deg, #ff8000, #e7afb2);"
+          >
+            LN
+          </div>
+          <div class="flex flex-col leading-tight">
+            <span class="text-sm font-semibold text-slate-900">Les Nübs — Season 26</span>
+            <span class="text-[0.65rem] text-slate-500">Analytics Dashboard v5.0</span>
+          </div>
+        </div>
+
+        <!-- Desktop Nav -->
+        <nav class="hidden md:flex items-center text-[0.7rem] font-medium text-slate-600 flex-1 min-w-0">
+          <!-- LEFT GROUP -->
+          <div class="flex items-center gap-4 whitespace-nowrap min-w-0">
+            <div id="season-menu-wrapper" class="relative">
+              <button
+                id="season-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                S26
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="season-menu-panel"
+                class="hidden z-50 absolute left-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="season-menu-btn"
+              >
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Season 26</div>
+                <a href="index.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Overview
+                </a>
+                <a href="season26team.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Team (5-stack)
+                </a>
+                <a href="Season26Otherflex.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Other Flex (1–4)
+                </a>
+                <a href="season26solo.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Solo/Duo (420)
+                </a>
+                <a href="season26lp.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  LP Tracker
+                </a>
+                <a href="thedot.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  The CAL
+                </a>
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <div class="px-3 pb-2 text-[0.65rem] uppercase tracking-wide text-slate-400">Archive</div>
+                <a href="season-25.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  S25 (Archive)
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- RIGHT GROUP -->
+          <div class="ml-auto flex items-center gap-4 whitespace-nowrap">
+            <div id="more-menu-wrapper" class="relative">
+              <button
+                id="more-menu-btn"
+                class="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-300 hover:border-[#e7afb2] hover:text-[#ff8000] transition-colors"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                More
+                <span class="text-[0.8em]">▾</span>
+              </button>
+
+              <div
+                id="more-menu-panel"
+                class="hidden z-50 absolute right-0 mt-2 w-44 rounded-lg border border-slate-200 bg-white shadow-lg py-2 text-xs"
+                role="menu"
+                aria-labelledby="more-menu-btn"
+              >
+                <a href="metrics.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Metric Glossary
+                </a>
+                <a href="methodology.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Calculations
+                </a>
+                <a href="changelog.html" class="block px-3 py-2 hover:bg-[#e7afb2]/20 hover:text-[#ff8000] transition-colors" role="menuitem">
+                  Version Tracker
+                </a>
+
+                <div class="my-2 border-t border-slate-200"></div>
+
+                <a
+                  href="privacy.html"
+                  aria-current="page"
+                  class="block px-3 py-2 font-semibold"
+                  style="background: rgba(231,175,178,0.20); color:#ff8000;"
+                  role="menuitem"
+                >
+                  Privacy Notice
+                </a>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Mobile Menu Toggle -->
+        <button
+          id="nav-toggle"
+          class="md:hidden inline-flex items-center justify-center w-8 h-8 rounded-lg border border-slate-300 text-slate-700 ml-auto"
+        >
+          <span id="nav-toggle-icon">☰</span>
+        </button>
+      </div>
+
+      <!-- Mobile Nav Panel -->
+      <div id="nav-menu" class="md:hidden hidden border-t border-slate-200 bg-white">
+        <div class="max-w-6xl mx-auto px-4 py-2 flex flex-col gap-1 text-xs font-medium text-slate-700">
+          <div class="py-2">
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Season 26</div>
+            <a href="index.html" class="py-1 block hover:text-[#ff8000]">Overview</a>
+            <a href="season26team.html" class="py-1 block hover:text-[#ff8000]">Team (5-stack)</a>
+            <a href="Season26Otherflex.html" class="py-1 block hover:text-[#ff8000]">Other Flex (1–4)</a>
+            <a href="season26solo.html" class="py-1 block hover:text-[#ff8000]">Solo/Duo (420)</a>
+            <a href="season26lp.html" class="py-1 block hover:text-[#ff8000]">LP Tracker</a>
+            <a href="thedot.html" class="py-1 block hover:text-[#ff8000]">The CAL</a>
+
+            <div class="my-2 border-t border-slate-200"></div>
+
+            <div class="text-[0.65rem] uppercase tracking-wide text-slate-400 mb-1">Archive</div>
+            <a href="season-25.html" class="py-1 block hover:text-[#ff8000]">S25 (Archive)</a>
+          </div>
+
+          <div class="my-2 border-t border-slate-200"></div>
+
+          <a href="metrics.html" class="py-1 text-left hover:text-[#ff8000]">Metric Glossary</a>
+          <a href="methodology.html" class="py-1 text-left hover:text-[#ff8000]">Calculations</a>
+          <a href="changelog.html" class="py-1 text-left hover:text-[#ff8000]">Version Tracker</a>
+          <a href="privacy.html" class="py-1 text-left font-semibold" style="color:#ff8000;">Privacy Notice</a>
+        </div>
+      </div>
+    </header>
+
     <div class="wrap">
       <div class="card">
         <div class="pill">🔒 Privacy Notice</div>
@@ -209,5 +367,6 @@
         </p>
       </div>
     </div>
+    <script type="module" src="./core/nav.js"></script>
   </body>
 </html>

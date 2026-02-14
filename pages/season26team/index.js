@@ -147,6 +147,11 @@ async function main() {
   const team = getQueue("team");
   if (!team) throw new Error("Queue config missing: team");
 
+  const timelinePromise = loadTimelineRows({ csvUrl: SEASON26_TIMELINE_CSV }).catch((e) => {
+    console.warn("[Team] timeline load failed (ok for now)", e);
+    return [];
+  });
+
   const rows = await loadTeamRows({
     csvUrl: team.csvUrl,
     roster: ROSTER,
@@ -158,106 +163,86 @@ async function main() {
   // Raw-ish rows for compute engines
   const rawRows = rows.map((r) => r?._raw ?? r);
 
-  // ===== Load timeline rows (for Lane Dynamics + Death Map) =====
-  let timelineRows = [];
-  try {
-    timelineRows = await loadTimelineRows({ csvUrl: SEASON26_TIMELINE_CSV });
-  } catch (e) {
-    console.warn("[Team] timeline load failed (ok for now)", e);
-    timelineRows = [];
-  }
+  const timelineRows = await timelinePromise;
 
-  // ===== 1) Player mini cards (async) =====
-  await safeAsyncMount(
-    miniCardsEl,
-    async () => {
-      await mountPlayerMiniCards(miniCardsEl, rows);
-    },
-    "[Team] mountPlayerMiniCards failed"
-  );
-
-  // ===== 2) Match list (async) =====
-  await safeAsyncMount(
-    matchlistEl,
-    async () => {
-      await mountTeamMatchListCard(matchlistEl, rows, {
-        title: "Match List (Last 10)",
-        roster: ROSTER,
-      });
-    },
-    "[Team] mountTeamMatchListCard failed"
-  );
-
-  // ===== 3) Team Summary (sync) =====
-  await safeSyncMount(
-    summaryEl,
-    () => {
-      mountTeamSummaryCard(summaryEl, rawRows, { tag: "5-stack" });
-    },
-    "[Team] mountTeamSummaryCard failed"
-  );
-
-  // ===== 4) TPI (sync) =====
-  await safeSyncMount(
-    tpiEl,
-    () => {
-      mountTpiCard(tpiEl, rawRows, {
-        title: "Total Player Impact (Team / 5-stack)",
-        roster: ROSTER,
-      });
-    },
-    "[Team] mountTpiCard failed"
-  );
-
-  // ===== 4b) Death Map (async) ✅ =====
-  await safeAsyncMount(
-    deathMapEl,
-    async () => {
-      await mountDeathMapCard(deathMapEl, timelineRows, {
-        title: "Death Map (Team / 5-stack)",
-        subtitle: "Heatmap of where deaths happen (timeline CHAMPION_KILL positions).",
-        roster: ROSTER,
-      });
-    },
-    "[Team] mountDeathMapCard failed"
-  );
-
-  // ===== 5) Team Synergy (async) =====
-  await safeAsyncMount(
-    teamSynergyEl,
-    async () => {
-      await mountTeamSynergyCard(teamSynergyEl, rawRows, {
-        unlockRoleGames: 99,
-        timelineRows, // ready for phase 2
-        debug: false,
-      });
-    },
-    "[Team] mountTeamSynergyCard failed"
-  );
-
-  // ===== 6) Objective Win Impact (sync) =====
-  await safeSyncMount(
-    objEl,
-    () => {
-      mountObjectivesWinImpactCard(objEl, rawRows, {
-        title: "Objective Win Impact (Team / 5-stack)",
-      });
-    },
-    "[Team] mountObjectivesWinImpactCard failed"
-  );
-
-  // ===== 7) Lane Dynamics & Playmakers (sync) =====
-  await safeSyncMount(
-    laneDynEl,
-    () => {
-      mountLaneDynamicsCard(laneDynEl, rawRows, timelineRows, {
-        roster: ROSTER,
-        unlockGames: 0, // set to 25 when you want gating live
-        initialPhase: "early",
-      });
-    },
-    "[Team] mountLaneDynamicsCard failed"
-  );
+  await Promise.all([
+    safeAsyncMount(
+      miniCardsEl,
+      async () => {
+        await mountPlayerMiniCards(miniCardsEl, rows);
+      },
+      "[Team] mountPlayerMiniCards failed"
+    ),
+    safeAsyncMount(
+      matchlistEl,
+      async () => {
+        await mountTeamMatchListCard(matchlistEl, rows, {
+          title: "Match List (Last 10)",
+          roster: ROSTER,
+        });
+      },
+      "[Team] mountTeamMatchListCard failed"
+    ),
+    safeSyncMount(
+      summaryEl,
+      () => {
+        mountTeamSummaryCard(summaryEl, rawRows, { tag: "5-stack" });
+      },
+      "[Team] mountTeamSummaryCard failed"
+    ),
+    safeSyncMount(
+      tpiEl,
+      () => {
+        mountTpiCard(tpiEl, rawRows, {
+          title: "Total Player Impact (Team / 5-stack)",
+          roster: ROSTER,
+        });
+      },
+      "[Team] mountTpiCard failed"
+    ),
+    safeAsyncMount(
+      deathMapEl,
+      async () => {
+        await mountDeathMapCard(deathMapEl, timelineRows, {
+          title: "Death Map (Team / 5-stack)",
+          subtitle: "Heatmap of where deaths happen (timeline CHAMPION_KILL positions).",
+          roster: ROSTER,
+        });
+      },
+      "[Team] mountDeathMapCard failed"
+    ),
+    safeAsyncMount(
+      teamSynergyEl,
+      async () => {
+        await mountTeamSynergyCard(teamSynergyEl, rawRows, {
+          unlockRoleGames: 0,
+          timelineRows, // ready for phase 2
+          debug: false,
+        });
+      },
+      "[Team] mountTeamSynergyCard failed"
+    ),
+    safeSyncMount(
+      objEl,
+      () => {
+        mountObjectivesWinImpactCard(objEl, rawRows, {
+          title: "Objective Win Impact (Team / 5-stack)",
+        });
+      },
+      "[Team] mountObjectivesWinImpactCard failed"
+    ),
+    safeSyncMount(
+      laneDynEl,
+      () => {
+        mountLaneDynamicsCard(laneDynEl, rawRows, timelineRows, {
+          roster: ROSTER,
+          unlockGames: 0, // set to 25 when you want gating live
+          initialPhase: "early",
+        });
+      },
+      "[Team] mountLaneDynamicsCard failed"
+    ),
+  ]);
 
   setStatus("Team (5-stack) modular view loaded.");
 }

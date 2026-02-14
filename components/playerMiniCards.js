@@ -38,6 +38,11 @@ function normalizeRole(role) {
   return r;
 }
 
+function noiseForPlayer(name) {
+  if (!NOISE_URLS.length) return "";
+  return NOISE_URLS[hashIndex(name, NOISE_URLS.length)];
+}
+
 // Deterministic "random" (stable) index from a string
 function hashIndex(str, modulo) {
   let h = 2166136261;
@@ -54,11 +59,6 @@ function seedFromString(str) {
   return idx / 9999;
 }
 
-function noiseForPlayer(name) {
-  if (!NOISE_URLS.length) return "";
-  return NOISE_URLS[hashIndex(name, NOISE_URLS.length)];
-}
-
 /** ISO week key (YYYY-W##) for stable weekly rotation */
 function isoWeekKey(d) {
   const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -68,6 +68,46 @@ function isoWeekKey(d) {
   const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil(((dt - yearStart) / 86400000 + 1) / 7);
   return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+/**
+ * ✅ Loose date parser:
+ * - accepts Date
+ * - accepts "DD.MM.YY HH:MM"
+ * - accepts ISO / epoch-ish strings (best-effort)
+ */
+function parseLooseDate(v) {
+  if (!v) return null;
+  if (v instanceof Date && Number.isFinite(v.getTime())) return v;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  // DD.MM.YY HH:MM
+  const m = s.match(/^(\d{2})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/);
+  if (m) {
+    const dd = Number(m[1]);
+    const mm = Number(m[2]) - 1;
+    const yy = Number(m[3]);
+    const HH = Number(m[4]);
+    const MM = Number(m[5]);
+    const fullYear = 2000 + yy;
+    // treat as UTC-ish so ordering is stable
+    const d = new Date(Date.UTC(fullYear, mm, dd, HH, MM, 0));
+    return Number.isFinite(d.getTime()) ? d : null;
+  }
+
+  // epoch seconds/ms
+  const n = Number(s);
+  if (Number.isFinite(n) && n > 0) {
+    const isMs = n > 5e10;
+    const d = new Date(isMs ? n : n * 1000);
+    if (Number.isFinite(d.getTime())) return d;
+  }
+
+  // ISO parse
+  const d = new Date(s);
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
 function injectMiniCardBitsOnce() {
@@ -112,18 +152,17 @@ function injectMiniCardBitsOnce() {
       max-width: 190px;
       overflow:hidden;
       text-overflow: ellipsis;
-      cursor: help; /* ✅ hover hint */
+      cursor: help;
     }
 
     /* ✅ Stats row: first two slightly smaller, third wider */
     body.s26 .s26-stats{
       display:grid;
-      grid-template-columns: 0.92fr 0.92fr 1.22fr; /* <-- adjust here */
+      grid-template-columns: 0.92fr 0.92fr 1.22fr;
       gap: 8px;
       margin-top: 10px;
     }
 
-    /* Subtle stat boxes */
     body.s26 .s26-stat{
       padding: 6px 10px;
       border-radius: 16px;
@@ -133,10 +172,7 @@ function injectMiniCardBitsOnce() {
       font-variant-numeric: tabular-nums;
     }
 
-    /* First 2 boxes: a bit tighter */
-    body.s26 .s26-stat--mini{
-      padding: 6px 9px;
-    }
+    body.s26 .s26-stat--mini{ padding: 6px 9px; }
 
     body.s26 .s26-stat-k{
       font-size: 0.55rem;
@@ -154,13 +190,8 @@ function injectMiniCardBitsOnce() {
       white-space: nowrap;
     }
 
-    /* KDA/WR a touch smaller */
-    body.s26 .s26-stat--mini .s26-stat-v{
-      font-size: 0.84rem;
-      font-weight: 600;
-    }
+    body.s26 .s26-stat--mini .s26-stat-v{ font-size: 0.84rem; font-weight: 600; }
 
-    /* K/D/A slightly bigger (and has more width) */
     body.s26 .s26-stat--kda .s26-stat-v{
       font-size: 0.88rem;
       font-weight: 600;
@@ -169,12 +200,7 @@ function injectMiniCardBitsOnce() {
     body.s26 .s26-stat--kda .s26-stat-v.sm{ font-size: 0.76rem; letter-spacing: -0.02em; }
     body.s26 .s26-stat--kda .s26-stat-v.xs{ font-size: 0.70rem; letter-spacing: -0.03em; }
 
-    /* Chips (subtle) */
-    body.s26 .s26-chipwrap{
-      display:flex;
-      flex-wrap:wrap;
-      gap: 6px;
-    }
+    body.s26 .s26-chipwrap{ display:flex; flex-wrap:wrap; gap: 6px; }
     body.s26 .s26-chip{
       display:inline-flex;
       align-items:center;
@@ -211,8 +237,12 @@ function injectMiniCardBitsOnce() {
   document.head.appendChild(style);
 }
 
-function buildPlayers(rows) {
+function buildPlayers(rows, filters = {}) {
   const byPlayer = new Map();
+
+  const wantQueueId = Number.isFinite(filters.queueId) ? Number(filters.queueId) : null;
+  const minDate = filters.minDate ? parseLooseDate(filters.minDate) : null;
+  const maxDate = filters.maxDate ? parseLooseDate(filters.maxDate) : null;
 
   for (const r of rows) {
     const raw = r?._raw ?? r;
@@ -220,11 +250,35 @@ function buildPlayers(rows) {
     const name = String(r.player ?? raw["p.riotIdGameName"] ?? raw["Player"] ?? "").trim();
     if (!name) continue;
 
-    const matchId = String(r.matchId ?? raw["Match ID"] ?? raw["MatchID"] ?? "").trim();
+    // queueId: support normalized + raw
+    const qid =
+      Number(r.queueId ?? raw["Queue ID"] ?? raw["QueueId"] ?? raw["queueId"] ?? 0) || 0;
+
+    // ✅ strict queue filter if requested
+    if (wantQueueId) {
+      if (!qid || qid !== wantQueueId) continue;
+    }
+
+    // date: support normalized + raw
+    const date =
+      r.date instanceof Date ? r.date : parseLooseDate(r.date ?? raw["Date"] ?? raw["date"] ?? null);
+
+    // ✅ optional date window filter
+    if (minDate) {
+      if (!date) continue;
+      if (date.getTime() < minDate.getTime()) continue;
+    }
+    if (maxDate) {
+      if (!date) continue;
+      if (date.getTime() > maxDate.getTime()) continue;
+    }
+
+    const matchId = String(r.matchId ?? raw["Match ID"] ?? raw["MatchID"] ?? raw["matchId"] ?? "").trim();
     const champ = String(r.champion ?? raw["Champion"] ?? raw["p.championName"] ?? "").trim();
     const role = normalizeRole(r.role ?? raw["ROLE"] ?? raw["p.teamPosition"] ?? raw["p.individualPosition"]);
 
-    const key = matchId || `${name}|${String(r.date ?? raw["Date"] ?? "")}|${champ}|${role}`;
+    // ✅ Dedup key: matchId is king
+    const key = matchId ? `${name}|${matchId}` : `${name}|${date?.toISOString?.() ?? ""}|${champ}|${role}|${qid}`;
 
     if (!byPlayer.has(name)) {
       byPlayer.set(name, { name, gameMap: new Map(), champs: new Map(), roles: new Map() });
@@ -254,7 +308,7 @@ function buildPlayers(rows) {
     const largestMultiKill = num(r.largestMultiKill ?? raw["p.largestMultiKill"] ?? raw["largestMultiKill"]);
 
     p.gameMap.set(key, {
-      date: r.date instanceof Date ? r.date : null,
+      date,
       win,
       champ,
       role,
@@ -277,7 +331,7 @@ function buildPlayers(rows) {
     const gamesArr = [...p.gameMap.values()].sort((a, b) => {
       const ta = a.date ? a.date.getTime() : 0;
       const tb = b.date ? b.date.getTime() : 0;
-      return ta - tb;
+      return ta - tb; // oldest -> newest
     });
 
     const games = gamesArr.length;
@@ -366,29 +420,23 @@ function buildPlayers(rows) {
       deaths,
       assists,
       kda,
-
       killsPerGame,
       deathsPerGame,
       assistsPerGame,
-
       multikills: mk,
       multiTotal,
-
       enemyMissingPings,
       pingPerGame,
-
       topChamps,
       topRoles,
       uniqueChamps,
       uniqueRoles,
       topChampShare,
       topRoleShare,
-
       last10Dots,
       winStreak,
       lossStreak,
       bounceback,
-
       topChamp: topChamps[0]?.champ ?? "",
     };
   });
@@ -426,11 +474,9 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
     candidates.push({ label, priority, tip: tip || label });
   };
 
-  // --- Streaks ---
   add("STRIKE", 100, p.winStreak >= 10, `Strike: won ${p.winStreak} games in a row. 🔥`);
   add("HOT STREAK", 95, p.winStreak >= 5, `Hot streak: won ${p.winStreak} games in a row.`);
 
-  // --- Team-leader badges ---
   add(
     "GRINDING IS LIFE",
     90,
@@ -447,7 +493,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
     `Main character: most kills per game (${p.killsPerGame.toFixed(1)}/game).`
   );
 
-  // --- Multikills ---
   add("PENTA PARTY", 85, (p.multikills?.p || 0) >= 1, `Penta Party: ${p.multikills.p} pentakill(s). 🎉`);
   add(
     "QUAD SQUAD",
@@ -457,7 +502,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
   );
   add("MULTIKILL MAGNET", 80, (p.multiTotal || 0) >= 5, `Multikill Magnet: ${p.multiTotal} multi-kills total.`);
 
-  // --- Champ identity ---
   add(
     "ONE TRICKY PONY",
     82,
@@ -466,7 +510,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
   );
   add("CHAMP BUFFET", 70, g >= 12 && p.uniqueChamps >= 10, `Champ Buffet: played ${p.uniqueChamps} different champs.`);
 
-  // --- Role identity ---
   add(
     "LANE LOYALIST",
     75,
@@ -480,7 +523,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
     `Role Chameleon: ${p.uniqueRoles} roles played — no single role above ${Math.round(p.topRoleShare * 100)}%.`
   );
 
-  // --- “Clean” playstyle ---
   add("CLEAN HANDS", 68, g >= 10 && p.deathsPerGame <= 2.2, `Clean Hands: only ${p.deathsPerGame.toFixed(1)} deaths per game.`);
   add(
     "NOT DYING TODAY",
@@ -489,7 +531,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
     `Not Dying Today: KDA ${p.kda.toFixed(2)} with ${p.deathsPerGame.toFixed(1)} deaths/game.`
   );
 
-  // --- Aggro / support vibes (proxy) ---
   add("DAMAGE DELIVERY", 65, g >= 10 && p.killsPerGame >= 7.5, `Damage Delivery: ${p.killsPerGame.toFixed(1)} kills per game.`);
   add(
     "ASSIST MERCHANT",
@@ -498,7 +539,6 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
     `Assist Merchant: ${p.assistsPerGame.toFixed(1)} assists/game.`
   );
 
-  // --- Pings ---
   add(
     "NO CHAT ONLY PING",
     60,
@@ -507,23 +547,18 @@ function pickFunnyBadge(p, ctx, fallbackLabel = "ON THE RIFT") {
   );
   add("ICE COLD", 58, g >= 10 && p.pingPerGame <= 0.4, `Ice Cold: barely pings missing (${p.pingPerGame.toFixed(1)}/game).`);
 
-  // --- Comeback vibe ---
   add("BOUNCEBACK ARC", 56, g >= 10 && p.bounceback === true, `Bounceback Arc: multiple loss→win rebounds in last 10, ending on a win.`);
-
-  // --- Unlucky but not toxic ---
   add("UNLUCKY RUN", 40, p.lossStreak >= 10, `Unlucky Run: ${p.lossStreak} losses in a row. Next one flips. 😤`);
 
   if (!candidates.length) {
     return { label: fallbackLabel, tip: `Just vibing — not enough badge signal yet.` };
   }
 
-  // pick from the highest-priority tier, rotate weekly if multiple tie
   const bestP = Math.max(...candidates.map((c) => c.priority));
   const pool = candidates.filter((c) => c.priority === bestP);
 
   const week = isoWeekKey(new Date());
   const pick = pool[hashIndex(`${p.name}|${week}`, pool.length)] || pool[0];
-
   return { label: pick.label, tip: pick.tip || pick.label };
 }
 
@@ -569,13 +604,11 @@ function renderCard(p, idx, ui, badgeCtx) {
     ? `${escapeHtml(ui.queueLabel)}`
     : `${escapeHtml(ui.queueLabel)} · ${escapeHtml(p.topRoles[0]?.role ?? "—")}`;
 
-  // No spaces: compact
   const kdaLine = `${p.kills}/${p.deaths}/${p.assists}`;
   let kdaSize = "";
   if (kdaLine.length >= 16) kdaSize = "xs";
   else if (kdaLine.length >= 13) kdaSize = "sm";
 
-  // ✅ Badge (label + hover tooltip)
   const badge =
     ui.badgeMode === "fixed"
       ? { label: ui.badgeText ?? "Solo", tip: ui.badgeText ?? "Solo" }
@@ -602,7 +635,6 @@ function renderCard(p, idx, ui, badgeCtx) {
       "></div>
 
       <div class="relative p-3">
-        <!-- Header -->
         <div class="flex items-start gap-2.5">
           <div class="w-10 h-10 rounded-2xl border border-slate-200 bg-white overflow-hidden shrink-0">
             <img
@@ -633,7 +665,6 @@ function renderCard(p, idx, ui, badgeCtx) {
           </div>
         </div>
 
-        <!-- ✅ Stats (first two smaller, 3rd bigger) -->
         <div class="s26-stats">
           <div class="s26-stat s26-stat--mini">
             <div class="s26-stat-k">KDA</div>
@@ -656,7 +687,6 @@ function renderCard(p, idx, ui, badgeCtx) {
           <div class="flex items-center gap-1.5">${dotsHTML}</div>
         </div>
 
-        <!-- Roles + Champs -->
         <div class="mt-2.5 grid grid-cols-2 gap-2">
           <div>
             <div class="text-[0.65rem] uppercase tracking-wide text-slate-500 mb-1">Roles</div>
@@ -692,10 +722,8 @@ export async function mountPlayerMiniCards(el, rows, opts = {}) {
 
   const ui = {
     queueLabel: opts.queueLabel ?? "Solo/Duo",
-    // If badgeMode !== "fixed", this becomes the fallback label when no funny badge triggers
     badgeText: opts.badgeText ?? "ON THE RIFT",
-    // "fun" (default) | "fixed"
-    badgeMode: opts.badgeMode ?? "fun",
+    badgeMode: opts.badgeMode ?? "fun", // "fun" | "fixed"
     hideRoleLine: opts.hideRoleLine ?? false,
   };
 
@@ -704,14 +732,20 @@ export async function mountPlayerMiniCards(el, rows, opts = {}) {
     return;
   }
 
-  const players = buildPlayers(rows);
+  // ✅ New: optional filtering for “season start”
+  const filters = {
+    queueId: opts.queueId ?? null,   // e.g. 420
+    minDate: opts.minDate ?? null,   // e.g. "2026-01-08"
+    maxDate: opts.maxDate ?? null,   // optional
+  };
+
+  const players = buildPlayers(rows, filters);
   if (!players.length) {
     el.innerHTML = `<div class="text-sm text-slate-500">No player rows found.</div>`;
     return;
   }
 
   const badgeCtx = buildBadgeContext(players);
-
   el.innerHTML = players.map((p, idx) => renderCard(p, idx, ui, badgeCtx)).join("");
 
   await Promise.all(
