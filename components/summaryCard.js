@@ -25,6 +25,9 @@ function injectSummaryExtrasOnce() {
       gap: 0.9rem;
       margin-top: 1rem;
     }
+    body.s26 .s26-summary-grid > *{
+      min-width: 0;
+    }
     @media (max-width: 900px){
       body.s26 .s26-summary-grid{ grid-template-columns: 1fr; }
     }
@@ -34,6 +37,8 @@ function injectSummaryExtrasOnce() {
       border: 1px solid rgba(229,231,235,0.75);
       border-radius: 1.15rem;
       padding: 0.95rem;
+      min-width: 0;
+      overflow: hidden;
     }
     body.s26 .s26-panel-title{
       font-weight: 900;
@@ -45,6 +50,9 @@ function injectSummaryExtrasOnce() {
       justify-content:space-between;
       gap: .75rem;
       margin-bottom: .15rem;
+    }
+    body.s26 .s26-panel-title .pill{
+      flex: 0 0 auto;
     }
     body.s26 .s26-panel-sub{
       color: var(--ln-muted);
@@ -212,6 +220,7 @@ function injectSummaryExtrasOnce() {
       border-radius: 1.05rem;
       padding: .55rem .6rem;
       overflow:hidden;
+      min-width: 0;
     }
 
     body.s26 .s26-roleplot-svg{
@@ -219,8 +228,110 @@ function injectSummaryExtrasOnce() {
       height: 275px;
       display:block;
     }
+    @media (max-width: 640px){
+      body.s26 .s26-panel{
+        padding: .78rem;
+      }
+
+      body.s26 .s26-panel-title{
+        font-size: .88rem;
+        align-items: flex-start;
+        justify-content: flex-start;
+        flex-wrap: wrap;
+        gap: .35rem .5rem;
+      }
+
+      body.s26 .s26-panel-title .pill{
+        font-size: .64rem;
+        padding: .16rem .48rem;
+      }
+
+      body.s26 .s26-panel-sub{
+        margin-bottom: .55rem;
+        line-height: 1.24;
+      }
+
+      body.s26 .s26-roleplot-top{
+        flex-direction: column;
+        align-items: stretch;
+        gap: .45rem;
+      }
+
+      body.s26 .s26-roleplot-top .left{
+        display: block;
+      }
+
+      body.s26 .s26-roleplot-meta{
+        display: block;
+        margin-top: .12rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.16;
+        font-size: .72rem;
+      }
+
+      body.s26 .s26-togglechip{
+        width: fit-content;
+        font-size: .73rem;
+        padding: .3rem .54rem;
+      }
+
+      body.s26 .s26-roleplot-canvas{
+        padding: .42rem .48rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+
+      body.s26 .s26-roleplot-svg{
+        min-width: 620px;
+        height: 258px;
+      }
+
+      body.s26 .s26-champs{
+        gap: .5rem;
+      }
+
+      body.s26 .s26-champ-chip{
+        padding: .5rem .56rem;
+        gap: .5rem;
+        align-items: flex-start;
+      }
+
+      body.s26 .s26-champ-icon{
+        width: 30px;
+        height: 30px;
+        border-radius: .75rem;
+      }
+
+      body.s26 .s26-champ-meta{
+        flex-direction: column;
+        align-items: flex-start;
+        gap: .15rem;
+      }
+
+      body.s26 .s26-champ-name{
+        font-size: .83rem;
+        white-space: normal;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        line-height: 1.12;
+      }
+
+      body.s26 .s26-champ-sub{
+        white-space: normal;
+        font-size: .71rem;
+        line-height: 1.14;
+      }
+    }
+
     @media (max-width: 520px){
-      body.s26 .s26-roleplot-svg{ height: 300px; }
+      body.s26 .s26-roleplot-svg{
+        min-width: 580px;
+        height: 248px;
+      }
     }
 
     /* ✅ Player chips: minimal, readable, no "pill inside pill", flow naturally */

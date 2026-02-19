@@ -408,25 +408,10 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
       const nubCount =
         meta?.nubCount ??
         (psNubs.length ? psNubs.length : ps.length); // fallback
-      const otherCount =
-        meta?.otherCount ??
-        Math.max(0, psAll.length - (psNubs.length || ps.length));
-
-      const namesLine = meta?.nubNames?.length
-        ? `${meta.nubNames.join(" · ")}${otherCount ? ` · +${otherCount} others` : ""}`
+      const stackPillHtml = showStack && (meta || nubsOnly) ? stackPill(nubCount) : "";
+      const stackLine = !showQueueColumn && stackPillHtml
+        ? `<div class="flex items-center gap-2 mb-1">${stackPillHtml}</div>`
         : "";
-
-      const stackLine =
-        showStack && (meta || nubsOnly)
-          ? `<div class="flex items-center gap-2 mb-1">
-               ${stackPill(nubCount)}
-               ${
-                 namesLine
-                   ? `<span class="text-[0.7rem] text-slate-400">${escapeHtml(namesLine)}</span>`
-                   : ""
-               }
-             </div>`
-          : "";
 
       const isDuoVisible = ps.length === 2;
 
@@ -465,7 +450,14 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
       const kdaHtml = ps
         .map((p) => `<div class="text-slate-700"><span class="font-semibold">${escapeHtml(kdaText(p))}</span></div>`)
         .join("");
-      const queueCell = showQueueColumn ? `<td>${rowQueuePill(rep, opts)}</td>` : "";
+      const queueCell = showQueueColumn
+        ? `<td>
+             <div class="flex flex-col items-start gap-1">
+               ${rowQueuePill(rep, opts)}
+               ${stackPillHtml}
+             </div>
+           </td>`
+        : "";
 
       const matchIdHint = m.matchId ? ` title="Match: ${escapeHtml(m.matchId)}"` : "";
 
@@ -500,7 +492,7 @@ export async function mountRecentGamesCard(el, rows, opts = {}) {
         <thead>
           <tr>
             <th style="width: 120px;">Date</th>
-            ${showQueueColumn ? '<th style="width: 94px;">Queue</th>' : ""}
+            ${showQueueColumn ? '<th style="width: 120px;">Queue</th>' : ""}
             <th>Players</th>
             <th>Champs</th>
             <th style="width: 110px;">Role</th>

@@ -27,6 +27,10 @@ function boolish(v) {
   return s === "1" || s === "true" || s === "yes" || s === "y";
 }
 
+function fmtInt(n) {
+  return Math.round(Number(n) || 0).toLocaleString("en-US");
+}
+
 function normalizeRole(role) {
   const r = String(role ?? "").trim().toUpperCase();
   if (!r) return "UNKNOWN";
@@ -221,6 +225,30 @@ function injectMiniCardBitsOnce() {
       white-space: nowrap;
     }
 
+    body.s26 .s26-aux-stats{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    body.s26 .s26-stat--aux{
+      padding: 6px 8px;
+      border-radius: 12px;
+    }
+
+    body.s26 .s26-stat--aux .s26-stat-k{
+      font-size: 0.50rem;
+      letter-spacing: 0.07em;
+    }
+
+    body.s26 .s26-stat--aux .s26-stat-v{
+      margin-top: 2px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
     body.s26 .mk-chip{
       display:inline-flex;align-items:center;gap:6px;
       padding:5px 9px;border-radius:9999px;
@@ -306,6 +334,16 @@ function buildPlayers(rows, filters = {}) {
     const quadraKills = num(r.quadraKills ?? raw["p.quadraKills"] ?? raw["quadraKills"]);
     const pentaKills = num(r.pentaKills ?? raw["p.pentaKills"] ?? raw["pentaKills"]);
     const largestMultiKill = num(r.largestMultiKill ?? raw["p.largestMultiKill"] ?? raw["largestMultiKill"]);
+    const goldEarned = num(r.goldEarned ?? raw["goldEarned"] ?? raw["p.goldEarned"] ?? raw["Gold Earned"]);
+    const summonerLevel = num(r.summonerLevel ?? raw["summonerLevel"] ?? raw["p.summonerLevel"]);
+    const pinkWardsBought = num(
+      r.visionWardsBoughtInGame ??
+      raw["visionWardsBoughtInGame"] ??
+      raw["p.visionWardsBoughtInGame"] ??
+      raw["PINK"] ??
+      raw["detectorWardsPlaced"] ??
+      raw["p.detectorWardsPlaced"]
+    );
 
     p.gameMap.set(key, {
       date,
@@ -321,6 +359,9 @@ function buildPlayers(rows, filters = {}) {
       pentaKills,
       largestMultiKill,
       enemyMissingPings,
+      goldEarned,
+      summonerLevel,
+      pinkWardsBought,
     });
 
     if (role && role !== "UNKNOWN") p.roles.set(role, (p.roles.get(role) || 0) + 1);
@@ -346,6 +387,12 @@ function buildPlayers(rows, filters = {}) {
     const killsPerGame = games ? kills / games : 0;
     const deathsPerGame = games ? deaths / games : 0;
     const assistsPerGame = games ? assists / games : 0;
+    const perfectKdaGames = gamesArr.reduce((s, g) => s + (num(g.deaths) === 0 ? 1 : 0), 0);
+    const goldEarnedTotal = gamesArr.reduce((s, g) => s + num(g.goldEarned), 0);
+    const avgGoldPerGame = games ? goldEarnedTotal / games : 0;
+    const summonerLevelMax = gamesArr.reduce((mx, g) => Math.max(mx, num(g.summonerLevel)), 0);
+    const pinkWardsBoughtTotal = gamesArr.reduce((s, g) => s + num(g.pinkWardsBought), 0);
+    const avgPinkWardsPerGame = games ? pinkWardsBoughtTotal / games : 0;
 
     const mk = { d: 0, t: 0, q: 0, p: 0 };
     for (const g of gamesArr) {
@@ -423,6 +470,12 @@ function buildPlayers(rows, filters = {}) {
       killsPerGame,
       deathsPerGame,
       assistsPerGame,
+      perfectKdaGames,
+      goldEarnedTotal,
+      avgGoldPerGame,
+      summonerLevelMax,
+      pinkWardsBoughtTotal,
+      avgPinkWardsPerGame,
       multikills: mk,
       multiTotal,
       enemyMissingPings,
@@ -603,6 +656,10 @@ function renderCard(p, idx, ui, badgeCtx) {
   const roleText = ui.hideRoleLine
     ? `${escapeHtml(ui.queueLabel)}`
     : `${escapeHtml(ui.queueLabel)} · ${escapeHtml(p.topRoles[0]?.role ?? "—")}`;
+  const perfectKdaText = String(p.perfectKdaGames ?? 0);
+  const avgGoldText = fmtInt(p.avgGoldPerGame);
+  const summonerLevelText = p.summonerLevelMax > 0 ? fmtInt(p.summonerLevelMax) : "—";
+  const avgPinkText = Number(p.avgPinkWardsPerGame || 0).toFixed(1);
 
   const kdaLine = `${p.kills}/${p.deaths}/${p.assists}`;
   let kdaSize = "";
@@ -685,6 +742,25 @@ function renderCard(p, idx, ui, badgeCtx) {
         <div class="mt-2.5 flex items-center justify-between gap-2">
           <div class="text-[0.65rem] uppercase tracking-wide text-slate-500">Last 10</div>
           <div class="flex items-center gap-1.5">${dotsHTML}</div>
+        </div>
+
+        <div class="s26-aux-stats">
+          <div class="s26-stat s26-stat--aux" title="Games with zero deaths.">
+            <div class="s26-stat-k">Perfect KDA</div>
+            <div class="s26-stat-v">${perfectKdaText}</div>
+          </div>
+          <div class="s26-stat s26-stat--aux" title="Average gold earned per game.">
+            <div class="s26-stat-k">Avg Gold / G</div>
+            <div class="s26-stat-v">${avgGoldText}</div>
+          </div>
+          <div class="s26-stat s26-stat--aux" title="Highest summoner level observed in this dataset.">
+            <div class="s26-stat-k">Summoner Lvl</div>
+            <div class="s26-stat-v">${summonerLevelText}</div>
+          </div>
+          <div class="s26-stat s26-stat--aux" title="Average pink/control wards bought per game.">
+            <div class="s26-stat-k">Pink / G</div>
+            <div class="s26-stat-v">${avgPinkText}</div>
+          </div>
         </div>
 
         <div class="mt-2.5 grid grid-cols-2 gap-2">
