@@ -114,6 +114,45 @@ function injectStylesOnce() {
       line-height: 1.25;
     }
 
+    .lp-top3 {
+      margin-top: 0.58rem;
+      padding-top: 0.46rem;
+      border-top: 1px dashed rgba(148,163,184,0.30);
+    }
+
+    .lp-top3-title {
+      font-size: 0.6rem;
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: rgba(71,85,105,0.86);
+      margin-bottom: 0.26rem;
+    }
+
+    .lp-top3-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      font-size: 0.66rem;
+      color: rgba(51,65,85,0.92);
+      line-height: 1.2;
+    }
+
+    .lp-top3-rank {
+      font-weight: 900;
+      color: rgba(15,23,42,0.95);
+      min-width: 1.35rem;
+    }
+
+    .lp-top3-text {
+      color: rgba(51,65,85,0.92);
+    }
+
+    .lp-top3-empty {
+      font-size: 0.64rem;
+      color: rgba(100,116,139,0.9);
+    }
+
     .lp-pill {
       display: inline-flex;
       align-items: center;
@@ -148,9 +187,20 @@ function injectStylesOnce() {
       overflow: hidden;
     }
 
+    .lp-map-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding-bottom: 0.22rem;
+      margin-top: 0.45rem;
+    }
+
+    .lp-map-canvas {
+      min-width: 1000px;
+    }
+
     .lp-svg {
       width: 100%;
-      height: 230px;
+      height: 248px;
       display: block;
     }
 
@@ -204,7 +254,7 @@ function injectStylesOnce() {
     }
 
     .lp-dotg text.initials {
-      font-size: 9px;
+      font-size: 8.2px;
       font-weight: 900;
       fill: rgba(255,255,255,0.95);
       dominant-baseline: middle;
@@ -425,11 +475,18 @@ function injectStylesOnce() {
 
     .lp-miles-event {
       position: absolute;
+      width: 0;
+      will-change: transform;
+      pointer-events: none;
+    }
+
+    .lp-miles-event-inner {
       width: 104px;
-      transform: translateX(-50%);
+      transform: translateX(calc(-50% + var(--spread, 0px)));
       text-align: center;
       animation: lpMilestoneEnter 0.45s ease both;
       will-change: transform, opacity;
+      pointer-events: auto;
     }
 
     .lp-miles-dot-wrap {
@@ -492,6 +549,19 @@ function injectStylesOnce() {
       font-size: 0.57rem;
       color: rgba(100,116,139,0.88);
       line-height: 1.1;
+      position: relative;
+      padding-top: 0.18rem;
+    }
+
+    .lp-miles-date::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 0;
+      width: 1px;
+      height: 4px;
+      background: rgba(100,116,139,0.42);
+      transform: translateX(-50%);
     }
 
     .lp-miles-foot {
@@ -522,6 +592,24 @@ function injectStylesOnce() {
       font-size: 0.62rem;
       font-weight: 900;
       color: rgba(15,23,42,0.82);
+    }
+
+    @media (max-width: 640px) {
+      .lp-map-shell {
+        padding: 0.75rem;
+      }
+
+      .lp-map-canvas {
+        min-width: 920px;
+      }
+
+      .lp-svg {
+        height: 262px;
+      }
+
+      .lp-top3-row {
+        font-size: 0.64rem;
+      }
     }
   `;
   document.head.appendChild(style);
@@ -569,6 +657,12 @@ q.FLEX.sort((a, b) => ts(a) - ts(b));
     out.set(id, q);
   }
   return out;
+}
+
+function rowTs(row) {
+  if (!row) return 0;
+  if (Number.isFinite(row.snapshotTs)) return row.snapshotTs;
+  return row?.snapshotDate?.getTime?.() ?? 0;
 }
 
 function computeBestRunUntilDrop(series) {
@@ -633,9 +727,9 @@ function computeBiggestDrop(series) {
 }
 
 function computeHighlights(seriesMap) {
-  let bestRun = null;
-  let bestStreak = null;
-  let bestDrop = null;
+  const runs = [];
+  const streaks = [];
+  const drops = [];
 
   for (const [riotId, qs] of seriesMap.entries()) {
     for (const queue of ["SOLO", "FLEX"]) {
@@ -643,17 +737,38 @@ function computeHighlights(seriesMap) {
       if (series.length < 2) continue;
 
       const run = computeBestRunUntilDrop(series);
-      if (run.gain > 0 && (!bestRun || run.gain > bestRun.gain)) bestRun = { riotId, queue, ...run };
+      if (run.gain > 0) runs.push({ riotId, queue, ...run });
 
       const st = computeLongestUpStreak(series);
-      if (st.len > 0 && (!bestStreak || st.len > bestStreak.len)) bestStreak = { riotId, queue, ...st };
+      if (st.len > 0) streaks.push({ riotId, queue, ...st });
 
       const drop = computeBiggestDrop(series);
-      if (drop.drop < 0 && (!bestDrop || drop.drop < bestDrop.drop)) bestDrop = { riotId, queue, ...drop };
+      if (drop.drop < 0) drops.push({ riotId, queue, ...drop });
     }
   }
 
-  return { bestRun, bestStreak, bestDrop };
+  runs.sort((a, b) => (b.gain - a.gain) || (rowTs(b.end) - rowTs(a.end)) || String(a.riotId).localeCompare(String(b.riotId)));
+  streaks.sort(
+    (a, b) =>
+      (b.len - a.len) ||
+      (b.gain - a.gain) ||
+      (rowTs(b.end) - rowTs(a.end)) ||
+      String(a.riotId).localeCompare(String(b.riotId))
+  );
+  drops.sort((a, b) => (a.drop - b.drop) || (rowTs(b.to) - rowTs(a.to)) || String(a.riotId).localeCompare(String(b.riotId)));
+
+  const topRuns = runs.slice(0, 3);
+  const topStreaks = streaks.slice(0, 3);
+  const topDrops = drops.slice(0, 3);
+
+  return {
+    bestRun: topRuns[0] || null,
+    bestStreak: topStreaks[0] || null,
+    bestDrop: topDrops[0] || null,
+    topRuns,
+    topStreaks,
+    topDrops,
+  };
 }
 
 function renderLocked(root, unlockInDays) {
@@ -695,7 +810,7 @@ function dotGroup({ x, y, queue, label, isTop, delay = 0, tip = "" }) {
       : "rgba(148,163,184,0.35)";
 
   const aura = isTop
-    ? `<circle class="lp-aura" cx="${x}" cy="${y}" r="20" fill="${
+    ? `<circle class="lp-aura" cx="${x}" cy="${y}" r="16" fill="${
         queue === "SOLO" ? "rgba(255,128,0,0.18)" : "rgba(59,130,246,0.16)"
       }"></circle>`
     : "";
@@ -704,8 +819,8 @@ function dotGroup({ x, y, queue, label, isTop, delay = 0, tip = "" }) {
     <g class="${cls}" style="animation-delay:${delay}s">
       <title>${tip || label}</title>
       ${aura}
-      <circle class="ring" cx="${x}" cy="${y}" r="11" stroke="${ring}"></circle>
-      <circle class="main" cx="${x}" cy="${y}" r="9"></circle>
+      <circle class="ring" cx="${x}" cy="${y}" r="9.5" stroke="${ring}"></circle>
+      <circle class="main" cx="${x}" cy="${y}" r="7.5"></circle>
       <text class="initials" x="${x}" y="${y}">${initials(label)}</text>
     </g>
   `;
@@ -812,9 +927,9 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
   const maxPts = hasRanked ? Math.max(...rankedPts) : 1;
 
   const W = 1000;
-  const H = 230;
-  const pad = { l: 18, r: 18, t: 24, b: 34 };
-  const lineY = 128;
+  const H = 248;
+  const pad = { l: 18, r: 18, t: 24, b: 36 };
+  const lineY = 134;
 
   const span = Math.max(50, maxPts - minPts);
   const padSpan = Math.round(span * 0.15);
@@ -833,7 +948,7 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
     const tx = pad.l + (i / ticks) * (W - pad.l - pad.r);
-    gridLines.push(`<line class="lp-grid" x1="${tx}" y1="${lineY - 24}" x2="${tx}" y2="${lineY + 24}" />`);
+    gridLines.push(`<line class="lp-grid" x1="${tx}" y1="${lineY - 30}" x2="${tx}" y2="${lineY + 30}" />`);
   }
 
   // NEW: subtle tier/div guides
@@ -841,8 +956,8 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
     lo,
     hi,
     xPos,
-    yTop: lineY - 30,
-    yBot: lineY + 30,
+    yTop: lineY - 36,
+    yBot: lineY + 36,
     yLabel: pad.t + 10,
   });
 
@@ -852,7 +967,7 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
   const dots = [];
   let delay = 0;
 
-  const yForIdx = (baseY, idx) => baseY + ((idx % 3) - 1) * 16;
+  const yForIdx = (baseY, idx) => baseY + ((idx % 5) - 2) * 11;
 
   let soloIdx = 0;
   let flexIdx = 0;
@@ -861,7 +976,7 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
   for (const p of latest) {
     if (p.soloPts != null) {
       const x = xPos(p.soloPts);
-      const y = yForIdx(lineY - 26, soloIdx++);
+      const y = yForIdx(lineY - 34, soloIdx++);
       const isTop = topSolo && topSolo.riotId === p.riotId;
       const tip = `${p.name} — SOLO: ${p.soloRank} (${p.soloPts} pts)`;
       dots.push(dotGroup({ x, y, queue: "SOLO", label: p.name, isTop, delay, tip }));
@@ -869,7 +984,7 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
     }
     if (p.flexPts != null) {
       const x = xPos(p.flexPts);
-      const y = yForIdx(lineY + 26, flexIdx++);
+      const y = yForIdx(lineY + 34, flexIdx++);
       const isTop = topFlex && topFlex.riotId === p.riotId;
       const tip = `${p.name} — FLEX: ${p.flexRank} (${p.flexPts} pts)`;
       dots.push(dotGroup({ x, y, queue: "FLEX", label: p.name, isTop, delay, tip }));
@@ -877,7 +992,7 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
     }
     if (p.soloPts == null && p.flexPts == null) {
       const x = pad.l + 18 + (unIdx % 6) * 18;
-      const y = lineY + 52 + Math.floor(unIdx / 6) * 18;
+      const y = lineY + 66 + Math.floor(unIdx / 6) * 20;
       const tip = `${p.name} — UNRANKED`;
       dots.push(dotGroup({ x, y, queue: "UNRANKED", label: p.name, isTop: false, delay, tip }));
       delay += 0.03;
@@ -908,17 +1023,20 @@ function buildRankMapSvg(seriesMap, rosterOrder = []) {
         Ranked players spread across the scale. Unranked grouped left (grey).
       </div>
       ${topChips}
+      <div class="lp-map-scroll">
+        <div class="lp-map-canvas">
+          <svg class="lp-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Rank map">
+            ${gridLines.join("")}
+            ${divGuides}
+            <line class="lp-axis" x1="${pad.l}" y1="${lineY}" x2="${W - pad.r}" y2="${lineY}"></line>
 
-      <svg class="lp-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Rank map">
-        ${gridLines.join("")}
-        ${divGuides}
-        <line class="lp-axis" x1="${pad.l}" y1="${lineY}" x2="${W - pad.r}" y2="${lineY}"></line>
+            <text class="lp-label" x="${pad.l}" y="${pad.t}" text-anchor="start"></text>
+            <text class="lp-label" x="${W - pad.r}" y="${pad.t}" text-anchor="end"></text>
 
-        <text class="lp-label" x="${pad.l}" y="${pad.t}" text-anchor="start"></text>
-        <text class="lp-label" x="${W - pad.r}" y="${pad.t}" text-anchor="end"></text>
-
-        ${dots.join("")}
-      </svg>
+            ${dots.join("")}
+          </svg>
+        </div>
+      </div>
     </div>
   `;
 
@@ -1164,6 +1282,57 @@ function buildMilestoneFiltersHtml(orderedPlayers, filters) {
   `;
 }
 
+function symmetricSpreadStep(i) {
+  if (i <= 0) return 0;
+  const n = Math.ceil(i / 2);
+  return i % 2 ? -n : n;
+}
+
+function applyMilestoneHorizontalSpread(laidOut, boardWidth) {
+  const out = Array.isArray(laidOut) ? laidOut : [];
+  const bucketPct = 0.9;
+  const stepPx = 22;
+  const maxAbs = 140;
+
+  const buckets = new Map();
+  for (const ev of out) {
+    const b = Math.round((ev.pct || 0) / bucketPct);
+    if (!buckets.has(b)) buckets.set(b, []);
+    buckets.get(b).push(ev);
+  }
+
+  for (const arr of buckets.values()) {
+    arr.sort((a, b) => (a.lane - b.lane) || ((a.ts || 0) - (b.ts || 0)));
+    arr.forEach((ev, idx) => {
+      ev.spreadPx = Math.max(-maxAbs, Math.min(maxAbs, symmetricSpreadStep(idx) * stepPx));
+    });
+  }
+
+  // Secondary pass: prevent near-collisions on the same lane after spreading.
+  const byLane = new Map();
+  for (const ev of out) {
+    if (!byLane.has(ev.lane)) byLane.set(ev.lane, []);
+    byLane.get(ev.lane).push(ev);
+  }
+
+  for (const arr of byLane.values()) {
+    arr.sort((a, b) => (a.pct - b.pct));
+    let prevX = -1e9;
+    for (const ev of arr) {
+      const anchorX = ((ev.pct || 0) / 100) * boardWidth;
+      const x = anchorX + (ev.spreadPx || 0);
+      const minGap = 64;
+      if (x - prevX < minGap) {
+        const need = minGap - (x - prevX);
+        ev.spreadPx = Math.max(-maxAbs, Math.min(maxAbs, (ev.spreadPx || 0) + need));
+      }
+      prevX = anchorX + (ev.spreadPx || 0);
+    }
+  }
+
+  return out;
+}
+
 function buildMilestonesTimeline(seriesMap, rows, rosterOrder = [], filters = {}) {
   const { year, startTs, endTs } = seasonWindowFromRows(rows);
   const allEvents = collectMilestoneEvents(seriesMap, rosterOrder);
@@ -1247,6 +1416,8 @@ function buildMilestonesTimeline(seriesMap, rows, rosterOrder = [], filters = {}
     laidOut.push({ ...ev, pct, lane, top: 78 + lane * 56 });
   }
 
+  applyMilestoneHorizontalSpread(laidOut, boardWidth);
+
   const tierCount = events.filter((x) => x.kind === "tier").length;
   const divCount = events.filter((x) => x.kind === "division").length;
   const placeCount = events.filter((x) => x.kind === "placement").length;
@@ -1272,18 +1443,21 @@ function buildMilestonesTimeline(seriesMap, rows, rosterOrder = [], filters = {}
           ? "lp-miles-event--division"
           : "lp-miles-event--placement";
       const delay = `${Math.min(1.2, idx * 0.04).toFixed(2)}s`;
+      const spreadPx = Math.round(ev.spreadPx || 0);
 
       return `
-        <article class="lp-miles-event lp-miles-event--${queueCls} ${kindCls}" style="left:${ev.pct.toFixed(3)}%; top:${ev.top}px; animation-delay:${delay};">
-          <div class="lp-miles-dot-wrap">
-            <svg class="lp-miles-dot lp-dotg ${dotQueueClass}" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="animation-delay:${delay};">
-              <circle class="ring" cx="12" cy="12" r="11"></circle>
-              <circle class="main" cx="12" cy="12" r="9"></circle>
-              <text class="initials" x="12" y="12">${escHtml(initials(ev.name))}</text>
-            </svg>
+        <article class="lp-miles-event lp-miles-event--${queueCls} ${kindCls}" style="left:${ev.pct.toFixed(3)}%; top:${ev.top}px; --spread:${spreadPx}px;">
+          <div class="lp-miles-event-inner" style="animation-delay:${delay};">
+            <div class="lp-miles-dot-wrap">
+              <svg class="lp-miles-dot lp-dotg ${dotQueueClass}" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" aria-hidden="true" style="animation-delay:${delay};">
+                <circle class="ring" cx="12" cy="12" r="11"></circle>
+                <circle class="main" cx="12" cy="12" r="9"></circle>
+                <text class="initials" x="12" y="12">${escHtml(initials(ev.name))}</text>
+              </svg>
+            </div>
+            <div class="lp-miles-rank">${escHtml(ev.rankLabel)}</div>
+            <div class="lp-miles-date">${escHtml(ev.dateLabel)}</div>
           </div>
-          <div class="lp-miles-rank">${escHtml(ev.rankLabel)}</div>
-          <div class="lp-miles-date">${escHtml(ev.dateLabel)}</div>
         </article>
       `;
     })
@@ -1364,7 +1538,7 @@ export async function mountLpProgressModule(
   }
 
   const seriesMap = groupSeries(rows);
-  const { bestRun, bestStreak, bestDrop } = computeHighlights(seriesMap);
+  const { bestRun, bestStreak, bestDrop, topRuns, topStreaks, topDrops } = computeHighlights(seriesMap);
   const { svg } = buildRankMapSvg(seriesMap, rosterOrder);
 
   mountEl.innerHTML = "";
@@ -1396,6 +1570,40 @@ export async function mountLpProgressModule(
     return c;
   };
 
+  const renderTop3 = (items, toLine, emptyText) => {
+    if (!items.length) {
+      return `<div class="lp-top3"><div class="lp-top3-title">Top 3</div><div class="lp-top3-empty">${escHtml(emptyText)}</div></div>`;
+    }
+    return `
+      <div class="lp-top3">
+        <div class="lp-top3-title">Top 3</div>
+        ${items
+          .slice(0, 3)
+          .map(
+            (item, idx) =>
+              `<div class="lp-top3-row"><span class="lp-top3-rank">#${idx + 1}</span><span class="lp-top3-text">${escHtml(toLine(item))}</span></div>`
+          )
+          .join("")}
+      </div>
+    `;
+  };
+
+  const runTop3Html = renderTop3(
+    topRuns,
+    (x) => `${x.queue} · ${safeName(x.riotId)} · +${x.gain} pts`,
+    "No positive runs found yet."
+  );
+  const streakTop3Html = renderTop3(
+    topStreaks,
+    (x) => `${x.queue} · ${safeName(x.riotId)} · ${x.len} step(s), +${x.gain} pts`,
+    "No upward streaks found yet."
+  );
+  const dropTop3Html = renderTop3(
+    topDrops,
+    (x) => `${x.queue} · ${safeName(x.riotId)} · ${fmtPts(x.drop)} pts`,
+    "No drops found yet."
+  );
+
   if (bestRun) {
     grid.appendChild(
       mkCard(
@@ -1403,11 +1611,12 @@ export async function mountLpProgressModule(
         `+${bestRun.gain}`,
         `<span class="lp-pill ${bestRun.queue === "SOLO" ? "lp-pill--solo" : "lp-pill--flex"}">${bestRun.queue}</span>
          <span class="ml-2 font-bold text-slate-700">${safeName(bestRun.riotId)}</span>
-         <div class="mt-1 text-slate-500">From ${bestRun.start?.snapshotDateStr || "—"} to ${bestRun.end?.snapshotDateStr || "—"}</div>`
+         <div class="mt-1 text-slate-500">From ${bestRun.start?.snapshotDateStr || "—"} to ${bestRun.end?.snapshotDateStr || "—"}</div>
+         ${runTop3Html}`
       )
     );
   } else {
-    grid.appendChild(mkCard("Most points won before a drop", "—", "Need at least 2 ranked snapshots."));
+    grid.appendChild(mkCard("Most points won before a drop", "—", `Need at least 2 ranked snapshots.${runTop3Html}`));
   }
 
   if (bestStreak) {
@@ -1417,11 +1626,12 @@ export async function mountLpProgressModule(
         `${bestStreak.len} step(s)`,
         `<span class="lp-pill ${bestStreak.queue === "SOLO" ? "lp-pill--solo" : "lp-pill--flex"}">${bestStreak.queue}</span>
          <span class="ml-2 font-bold text-slate-700">${safeName(bestStreak.riotId)}</span>
-         <div class="mt-1 text-slate-500">Net +${bestStreak.gain} from ${bestStreak.start?.snapshotDateStr || "—"} → ${bestStreak.end?.snapshotDateStr || "—"}</div>`
+         <div class="mt-1 text-slate-500">Net +${bestStreak.gain} from ${bestStreak.start?.snapshotDateStr || "—"} → ${bestStreak.end?.snapshotDateStr || "—"}</div>
+         ${streakTop3Html}`
       )
     );
   } else {
-    grid.appendChild(mkCard("Longest “up” streak", "—", "Need at least 2 ranked snapshots."));
+    grid.appendChild(mkCard("Longest “up” streak", "—", `Need at least 2 ranked snapshots.${streakTop3Html}`));
   }
 
   if (bestDrop) {
@@ -1433,11 +1643,12 @@ export async function mountLpProgressModule(
         `${fmtPts(bestDrop.drop)} pts`,
         `<span class="lp-pill ${bestDrop.queue === "SOLO" ? "lp-pill--solo" : "lp-pill--flex"}">${bestDrop.queue}</span>
          <span class="ml-2 font-bold text-slate-700">${safeName(bestDrop.riotId)}</span>
-         <div class="mt-1 text-slate-500">${fromRank} → ${toRank}</div>`
+         <div class="mt-1 text-slate-500">${fromRank} → ${toRank}</div>
+         ${dropTop3Html}`
       )
     );
   } else {
-    grid.appendChild(mkCard("Biggest fall", "—", "Need at least 2 ranked snapshots."));
+    grid.appendChild(mkCard("Biggest fall", "—", `Need at least 2 ranked snapshots.${dropTop3Html}`));
   }
 
   const mapWrap = el("div", "mt-3");
